@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <PublishAot>true</PublishAot>
+        <PublishTrimmed>true</PublishTrimmed>
+        <TrimMode>full</TrimMode>
+        <IsAotCompatible>true</IsAotCompatible>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+        <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+        <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\YoutubeAPI\YoutubeAPI.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="System.CommandLine"/>
+    </ItemGroup>
+
+</Project>

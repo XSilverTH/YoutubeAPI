@@ -1,3 +1,6 @@
 <Solution>
-  <Project Path="YoutubeAPI/YoutubeAPI.csproj" />
+    <Project Path="YoutubeAPI/YoutubeAPI.csproj"/>
+    <Project Path="YoutubeAPI.Cli/YoutubeAPI.Cli.csproj"/>
+    <Project Path="YoutubeAPI.Tests/YoutubeAPI.Tests.csproj"/>
+    <Project Path="YoutubeAPI.LiveTests/YoutubeAPI.LiveTests.csproj"/>
 </Solution>
