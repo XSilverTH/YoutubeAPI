@@ -110,6 +110,61 @@ public class ParserTests
     }
 
     [Fact]
+    public void ParseVideoSummaryExtractsDurationFromThumbnailOverlayWhenLengthTextIsMissing()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "videoId": "dQw4w9WgXcQ",
+              "title": {"simpleText": "Feed Video"},
+              "thumbnailOverlays": [{
+                "thumbnailOverlayTimeStatusRenderer": {
+                  "text": {"simpleText": "12:34"}
+                }
+              }]
+            }
+            """);
+
+        var summary = SearchHandler.ParseVideoSummary(doc.RootElement);
+
+        Assert.NotNull(summary);
+        Assert.Equal(new TimeSpan(0, 12, 34), summary.Duration);
+    }
+
+    [Fact]
+    public void ParseLockupViewModelExtractsDurationFromThumbnailBadge()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+              "contentId": "dQw4w9WgXcQ",
+              "contentImage": {
+                "thumbnailViewModel": {
+                  "overlays": [{
+                    "thumbnailBottomOverlayViewModel": {
+                      "badges": [{
+                        "thumbnailBadgeViewModel": {
+                          "text": {"content": "1:05:42"}
+                        }
+                      }]
+                    }
+                  }]
+                }
+              },
+              "metadata": {
+                "lockupMetadataViewModel": {
+                  "title": {"content": "Lockup Video"}
+                }
+              }
+            }
+            """);
+
+        var result = Assert.IsType<YoutubeAPI.Models.Search.VideoSearchResult>(
+            SearchHandler.ParseLockupViewModel(doc.RootElement));
+
+        Assert.Equal(new TimeSpan(1, 5, 42), result.Video.Duration);
+    }
+
+    [Fact]
     public void ParseLockupViewModelExtractsChannelMetadata()
     {
         using var doc = JsonDocument.Parse("""

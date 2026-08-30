@@ -203,6 +203,108 @@ internal static partial class InnerTubeElement
         return null;
     }
 
+    public static TimeSpan? ParseVideoDuration(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var duration = ParseDuration(element.GetText("lengthText"));
+        if (duration is not null)
+            return duration;
+
+        if (element.TryGetProperty("thumbnailOverlays", out var thumbnailOverlays))
+        {
+            duration = ParseClassicDurationOverlay(thumbnailOverlays);
+            if (duration is not null)
+                return duration;
+        }
+
+        var thumbnailViewModel = element.GetPropertyOrDefault("contentImage")
+            .GetPropertyOrDefault("thumbnailViewModel");
+        if (thumbnailViewModel.ValueKind == JsonValueKind.Object &&
+            thumbnailViewModel.TryGetProperty("overlays", out var overlays))
+            return ParseModernDurationOverlay(overlays);
+
+        return null;
+    }
+
+    private static TimeSpan? ParseClassicDurationOverlay(JsonElement overlays)
+    {
+        if (overlays.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var overlay in overlays.EnumerateArray())
+        {
+            if (!overlay.TryGetProperty("thumbnailOverlayTimeStatusRenderer", out var timeStatus))
+                continue;
+
+            var duration = ParseDuration(timeStatus.GetText("text"));
+            if (duration is not null)
+                return duration;
+        }
+
+        return null;
+    }
+
+    private static TimeSpan? ParseModernDurationOverlay(JsonElement overlays)
+    {
+        if (overlays.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var overlay in overlays.EnumerateArray())
+        {
+            if (overlay.TryGetProperty("thumbnailOverlayTimeStatusRenderer", out var timeStatus))
+            {
+                var duration = ParseDuration(timeStatus.GetText("text"));
+                if (duration is not null)
+                    return duration;
+            }
+
+            if (overlay.TryGetProperty("thumbnailBottomOverlayViewModel", out var bottomOverlay))
+            {
+                var duration = ParseModernBadgeDuration(bottomOverlay.GetPropertyOrDefault("badges"));
+                duration ??= ParseModernBadgeDuration(bottomOverlay.GetPropertyOrDefault("badge"));
+                if (duration is not null)
+                    return duration;
+            }
+
+            if (overlay.TryGetProperty("thumbnailOverlayBadgeViewModel", out var badgeOverlay))
+            {
+                var duration = ParseModernBadgeDuration(badgeOverlay.GetPropertyOrDefault("thumbnailBadges"));
+                if (duration is not null)
+                    return duration;
+            }
+        }
+
+        return null;
+    }
+
+    private static TimeSpan? ParseModernBadgeDuration(JsonElement badges)
+    {
+        if (badges.ValueKind == JsonValueKind.Object)
+        {
+            var badgeViewModel = badges.TryGetProperty("thumbnailBadgeViewModel", out var viewModel)
+                ? viewModel
+                : badges;
+            return ParseDuration(badgeViewModel.GetText("text"));
+        }
+
+        if (badges.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var badge in badges.EnumerateArray())
+        {
+            var badgeViewModel = badge.TryGetProperty("thumbnailBadgeViewModel", out var viewModel)
+                ? viewModel
+                : badge;
+            var duration = ParseDuration(badgeViewModel.GetText("text"));
+            if (duration is not null)
+                return duration;
+        }
+
+        return null;
+    }
+
     public static long? ParseCount(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))

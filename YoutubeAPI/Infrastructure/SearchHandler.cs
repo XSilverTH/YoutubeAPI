@@ -176,11 +176,10 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
         var videoIdStr = vr.TryGetProperty("videoId", out var vidEl) ? vidEl.GetString() : null;
         if (string.IsNullOrEmpty(videoIdStr) || !VideoId.TryParse(videoIdStr, out var videoId))
             return null;
-
         var title = vr.GetText("title");
+
         var thumbnails = vr.GetThumbnails("thumbnail");
-        var durationText = vr.GetText("lengthText");
-        var duration = InnerTubeElement.ParseDuration(durationText);
+        var duration = InnerTubeElement.ParseVideoDuration(vr);
 
         string? channelTitle = null;
         string? channelIdStr = null;
@@ -358,7 +357,7 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
                 videoId,
                 title,
                 channel,
-                null,
+                InnerTubeElement.ParseVideoDuration(lockup),
                 new Uri($"https://www.youtube.com/watch?v={videoId}"),
                 thumbnails,
                 publication.PublishedText,
