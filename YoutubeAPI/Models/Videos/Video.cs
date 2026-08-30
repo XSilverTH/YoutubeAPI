@@ -15,4 +15,10 @@ public sealed record Video(
     string Description,
     IReadOnlyList<string> Keywords,
     DateOnly? UploadDate,
-    LiveBroadcastState LiveState);
+    LiveBroadcastState LiveState)
+{
+    /// <summary>
+    ///     Gets the authenticated viewer's playback state when supplied by the video response, or <c>null</c>.
+    /// </summary>
+    public VideoPlaybackProgress? PlaybackProgress { get; init; }
+}

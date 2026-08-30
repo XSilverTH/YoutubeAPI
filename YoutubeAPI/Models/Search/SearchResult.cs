@@ -18,7 +18,13 @@ public abstract record SearchResult;
 ///     Represents a video search result item.
 /// </summary>
 /// <param name="Video">The summary of the matched video.</param>
-public sealed record VideoSearchResult(VideoSummary Video) : SearchResult;
+public sealed record VideoSearchResult(VideoSummary Video) : SearchResult
+{
+    /// <summary>
+    ///     Gets the authenticated viewer's playback state when supplied by this response, or <c>null</c>.
+    /// </summary>
+    public VideoPlaybackProgress? PlaybackProgress { get; init; }
+}
 
 /// <summary>
 ///     Represents a channel search result item.

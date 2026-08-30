@@ -14,6 +14,7 @@ namespace YoutubeAPI.Infrastructure;
 internal interface IYouTubeVideosHandler
 {
     Task<Video> GetAsync(VideoId videoId, CancellationToken cancellationToken);
+    Task<VideoPlaybackProgress?> GetPlaybackProgressAsync(VideoId videoId, CancellationToken cancellationToken);
     Task<IReadOnlyList<TranscriptTrack>> GetTranscriptTracksAsync(VideoId videoId, CancellationToken cancellationToken);
 
     Task<Transcript> GetTranscriptAsync(VideoId videoId, TranscriptTrackId trackId,

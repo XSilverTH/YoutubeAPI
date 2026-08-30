@@ -254,10 +254,11 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         ChannelVideoSort sort)
     {
         var items = new List<VideoSummary>();
+        var playbackProgress = new Dictionary<VideoId, VideoPlaybackProgress>();
         string? continuationToken = null;
         string? trackingParams = null;
 
-        CollectVideos(root, items, ref continuationToken, ref trackingParams);
+        CollectVideos(root, items, playbackProgress, ref continuationToken, ref trackingParams);
 
         if (ChannelId.TryParse(channelRef, out var fallbackId))
         {
@@ -279,7 +280,10 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
             ? new ChannelVideosContinuation(continuationToken, channelRef, sort, trackingParams)
             : null;
 
-        return new Page<VideoSummary, ChannelVideosContinuation>(items, next);
+        return new Page<VideoSummary, ChannelVideosContinuation>(items, next)
+        {
+            PlaybackProgress = playbackProgress.Count == 0 ? null : playbackProgress
+        };
     }
 
     private static Page<PlaylistSummary, ChannelPlaylistsContinuation> ParseChannelPlaylistsResponse(
@@ -299,13 +303,17 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         return new Page<PlaylistSummary, ChannelPlaylistsContinuation>(items, next);
     }
 
-    private static void CollectVideos(JsonElement element, List<VideoSummary> items, ref string? continuationToken,
+    private static void CollectVideos(
+        JsonElement element,
+        List<VideoSummary> items,
+        Dictionary<VideoId, VideoPlaybackProgress> playbackProgress,
+        ref string? continuationToken,
         ref string? trackingParams)
     {
         if (element.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in element.EnumerateArray())
-                CollectVideos(item, items, ref continuationToken, ref trackingParams);
+                CollectVideos(item, items, playbackProgress, ref continuationToken, ref trackingParams);
             return;
         }
 
@@ -324,7 +332,7 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         {
             var summary = SearchHandler.ParseVideoSummary(vr);
             if (summary != null)
-                items.Add(summary);
+                AddVideo(summary, InnerTubeElement.ParsePlaybackProgress(vr), items, playbackProgress);
             return;
         }
 
@@ -332,7 +340,31 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         {
             var summary = SearchHandler.ParseVideoSummary(gvr);
             if (summary != null)
-                items.Add(summary);
+                AddVideo(summary, InnerTubeElement.ParsePlaybackProgress(gvr), items, playbackProgress);
+            return;
+        }
+
+        if (element.TryGetProperty("compactVideoRenderer", out var cvr))
+        {
+            var summary = SearchHandler.ParseVideoSummary(cvr);
+            if (summary != null)
+                AddVideo(summary, InnerTubeElement.ParsePlaybackProgress(cvr), items, playbackProgress);
+            return;
+        }
+
+        if (element.TryGetProperty("playlistPanelVideoRenderer", out var ppvr))
+        {
+            var summary = SearchHandler.ParseVideoSummary(ppvr);
+            if (summary != null)
+                AddVideo(summary, InnerTubeElement.ParsePlaybackProgress(ppvr), items, playbackProgress);
+            return;
+        }
+
+        if (element.TryGetProperty("videoWithContextRenderer", out var vwcr))
+        {
+            var summary = SearchHandler.ParseVideoSummary(vwcr);
+            if (summary != null)
+                AddVideo(summary, InnerTubeElement.ParsePlaybackProgress(vwcr), items, playbackProgress);
             return;
         }
 
@@ -340,36 +372,47 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         {
             var res = SearchHandler.ParseLockupViewModel(lockup);
             if (res is VideoSearchResult vsr)
-                items.Add(vsr.Video);
+                AddVideo(vsr.Video, vsr.PlaybackProgress, items, playbackProgress);
             return;
         }
 
         if (element.TryGetProperty("contents", out var contents))
-            CollectVideos(contents, items, ref continuationToken, ref trackingParams);
+            CollectVideos(contents, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("items", out var listItems))
-            CollectVideos(listItems, items, ref continuationToken, ref trackingParams);
+            CollectVideos(listItems, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("richItemRenderer", out var rir) && rir.TryGetProperty("content", out var rc))
-            CollectVideos(rc, items, ref continuationToken, ref trackingParams);
+            CollectVideos(rc, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("tabRenderer", out var tr) && tr.TryGetProperty("content", out var tc))
-            CollectVideos(tc, items, ref continuationToken, ref trackingParams);
+            CollectVideos(tc, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("twoColumnBrowseResultsRenderer", out var tcbrr))
-            CollectVideos(tcbrr, items, ref continuationToken, ref trackingParams);
+            CollectVideos(tcbrr, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("tabs", out var tabs))
-            CollectVideos(tabs, items, ref continuationToken, ref trackingParams);
+            CollectVideos(tabs, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("richGridRenderer", out var rgr))
-            CollectVideos(rgr, items, ref continuationToken, ref trackingParams);
+            CollectVideos(rgr, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("sectionListRenderer", out var slr))
-            CollectVideos(slr, items, ref continuationToken, ref trackingParams);
+            CollectVideos(slr, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("itemSectionRenderer", out var isr))
-            CollectVideos(isr, items, ref continuationToken, ref trackingParams);
+            CollectVideos(isr, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("onResponseReceivedActions", out var actions))
-            CollectVideos(actions, items, ref continuationToken, ref trackingParams);
+            CollectVideos(actions, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("appendContinuationItemsAction", out var acia))
-            CollectVideos(acia, items, ref continuationToken, ref trackingParams);
+            CollectVideos(acia, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("reloadContinuationItemsCommand", out var rcic))
-            CollectVideos(rcic, items, ref continuationToken, ref trackingParams);
+            CollectVideos(rcic, items, playbackProgress, ref continuationToken, ref trackingParams);
         if (element.TryGetProperty("continuationItems", out var ci))
-            CollectVideos(ci, items, ref continuationToken, ref trackingParams);
+            CollectVideos(ci, items, playbackProgress, ref continuationToken, ref trackingParams);
+    }
+
+    private static void AddVideo(
+        VideoSummary summary,
+        VideoPlaybackProgress? progress,
+        List<VideoSummary> items,
+        Dictionary<VideoId, VideoPlaybackProgress> playbackProgress)
+    {
+        items.Add(summary);
+        if (progress != null)
+            playbackProgress[summary.Id] = progress;
     }
 
     private static void CollectPlaylists(JsonElement element, List<PlaylistSummary> items,

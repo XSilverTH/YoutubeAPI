@@ -20,7 +20,6 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
     {
         try
         {
-            // Call direct /next for rich interactive metadata
             var nextTask = FetchNextAsync(videoId, cancellationToken);
             var explodeTask = FetchExplodeVideoAsync(videoId, cancellationToken);
 
@@ -28,6 +27,7 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
 
             var nextData = await nextTask.ConfigureAwait(false);
             var explodeVideo = await explodeTask.ConfigureAwait(false);
+            var playbackProgress = nextData?.PlaybackProgress;
 
             if (explodeVideo != null)
             {
@@ -80,9 +80,11 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                     explodeVideo.Description,
                     [.. explodeVideo.Keywords],
                     uploadDate,
-                    nextData?.LiveState ?? LiveBroadcastState.None);
+                    nextData?.LiveState ?? LiveBroadcastState.None)
+                {
+                    PlaybackProgress = playbackProgress
+                };
             }
-
             if (nextData != null)
             {
                 var channelId = nextData.ChannelId ?? new ChannelId("UC0000000000000000000000");
@@ -108,15 +110,16 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                     nextData.PublishedAt,
                     false,
                     stats);
-
                 return new Video(
                     summary,
                     nextData.Description ?? string.Empty,
                     nextData.Keywords ?? [],
                     nextData.UploadDate,
-                    nextData.LiveState);
+                    nextData.LiveState)
+                {
+                    PlaybackProgress = playbackProgress
+                };
             }
-
             throw new ResourceNotFoundException($"Video '{videoId}' was not found or is unavailable.");
         }
         catch (OperationCanceledException)
@@ -137,6 +140,60 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
             throw new YouTubeRequestException(
                 $"Failed to load video '{videoId}': {InnerTubeSession.Sanitize(ex.Message)}", "video.get", null, ex);
         }
+    }
+
+    public async Task<VideoPlaybackProgress?> GetPlaybackProgressAsync(VideoId videoId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var nextTask = FetchNextAsync(videoId, cancellationToken);
+            var playerTask = FetchPlaybackProgressCoreAsync(videoId, cancellationToken);
+            await Task.WhenAll(nextTask, playerTask).ConfigureAwait(false);
+
+            return MergePlaybackProgress(
+                await playerTask.ConfigureAwait(false),
+                (await nextTask.ConfigureAwait(false))?.PlaybackProgress);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new YouTubeRequestException(
+                $"Failed to load playback progress for '{videoId}': {InnerTubeSession.Sanitize(ex.Message)}",
+                "playback.progress", null, ex);
+        }
+    }
+
+    private static VideoPlaybackProgress? MergePlaybackProgress(
+        VideoPlaybackProgress? primary,
+        VideoPlaybackProgress? secondary)
+    {
+        if (primary == null)
+            return secondary;
+        if (secondary == null)
+            return primary;
+
+        return new VideoPlaybackProgress(
+            primary.WatchedFraction ?? secondary.WatchedFraction,
+            primary.ResumePosition ?? secondary.ResumePosition,
+            primary.IsCompleted || secondary.IsCompleted);
+    }
+
+    private async Task<VideoPlaybackProgress?> FetchPlaybackProgressCoreAsync(VideoId videoId,
+        CancellationToken cancellationToken)
+    {
+        using var playerDoc = await FetchPlayerDocAsync(videoId, cancellationToken).ConfigureAwait(false);
+        if (playerDoc == null)
+            return null;
+
+        var overlays = InnerTubeElement.ParsePlaybackProgress(
+            playerDoc.RootElement.GetPropertyOrDefault("playerOverlays"));
+        var endpoint = InnerTubeElement.ParsePlaybackProgress(
+            playerDoc.RootElement.GetPropertyOrDefault("currentVideoEndpoint"));
+        return MergePlaybackProgress(overlays, endpoint);
     }
 
     public async Task<IReadOnlyList<TranscriptTrack>> GetTranscriptTracksAsync(VideoId videoId,
@@ -306,7 +363,14 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
 
     private static NextVideoData ParseNextResponse(JsonElement root)
     {
-        var data = new NextVideoData();
+        var progressFromOverlays = InnerTubeElement.ParsePlaybackProgress(
+            root.GetPropertyOrDefault("playerOverlays"));
+        var progressFromEndpoint = InnerTubeElement.ParsePlaybackProgress(
+            root.GetPropertyOrDefault("currentVideoEndpoint"));
+        var data = new NextVideoData
+        {
+            PlaybackProgress = MergePlaybackProgress(progressFromOverlays, progressFromEndpoint)
+        };
 
         if (!root.TryGetProperty("contents", out var contents) ||
             !contents.TryGetProperty("twoColumnWatchNextResults", out var watchNext) ||
@@ -528,6 +592,7 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
         public long? LikeCount { get; set; }
         public long? CommentCount { get; set; }
         public IReadOnlyList<string>? Keywords { get; set; }
+        public VideoPlaybackProgress? PlaybackProgress { get; set; }
         public LiveBroadcastState LiveState { get; } = LiveBroadcastState.None;
     }
 }

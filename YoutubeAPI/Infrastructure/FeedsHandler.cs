@@ -230,7 +230,10 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         {
             var summary = SearchHandler.ParseVideoSummary(vr);
             if (summary != null)
-                items.Add(new VideoFeedItem(summary));
+                items.Add(new VideoFeedItem(summary)
+                {
+                    PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(vr)
+                });
             return;
         }
 
@@ -238,7 +241,43 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         {
             var summary = SearchHandler.ParseVideoSummary(gvr);
             if (summary != null)
-                items.Add(new VideoFeedItem(summary));
+                items.Add(new VideoFeedItem(summary)
+                {
+                    PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(gvr)
+                });
+            return;
+        }
+
+        if (element.TryGetProperty("compactVideoRenderer", out var cvr))
+        {
+            var summary = SearchHandler.ParseVideoSummary(cvr);
+            if (summary != null)
+                items.Add(new VideoFeedItem(summary)
+                {
+                    PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(cvr)
+                });
+            return;
+        }
+
+        if (element.TryGetProperty("playlistPanelVideoRenderer", out var ppvr))
+        {
+            var summary = SearchHandler.ParseVideoSummary(ppvr);
+            if (summary != null)
+                items.Add(new VideoFeedItem(summary)
+                {
+                    PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(ppvr)
+                });
+            return;
+        }
+
+        if (element.TryGetProperty("videoWithContextRenderer", out var vwcr))
+        {
+            var summary = SearchHandler.ParseVideoSummary(vwcr);
+            if (summary != null)
+                items.Add(new VideoFeedItem(summary)
+                {
+                    PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(vwcr)
+                });
             return;
         }
 
@@ -264,7 +303,10 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
             switch (res)
             {
                 case VideoSearchResult vsr:
-                    items.Add(new VideoFeedItem(vsr.Video));
+                    items.Add(new VideoFeedItem(vsr.Video)
+                    {
+                        PlaybackProgress = vsr.PlaybackProgress
+                    });
                     break;
                 case ChannelSearchResult csr:
                     items.Add(new ChannelFeedItem(csr.Channel));
@@ -394,9 +436,28 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
             if (summary == null) return;
             var feedbackToken = FindFeedbackToken(vr);
             if (string.IsNullOrEmpty(feedbackToken)) feedbackToken = summary.Id.Value;
-
             if (HistoryEntryId.TryParse(feedbackToken, out var entryId))
-                items.Add(new HistoryEntry(entryId, new VideoFeedItem(summary)));
+                items.Add(new HistoryEntry(entryId,
+                    new VideoFeedItem(summary)
+                    {
+                        PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(vr)
+                    }));
+
+            return;
+        }
+
+        if (element.TryGetProperty("compactVideoRenderer", out var cvr) ||
+            element.TryGetProperty("videoWithContextRenderer", out cvr))
+        {
+            var summary = SearchHandler.ParseVideoSummary(cvr);
+            if (summary == null) return;
+
+            if (HistoryEntryId.TryParse(summary.Id.Value, out var entryId))
+                items.Add(new HistoryEntry(entryId,
+                    new VideoFeedItem(summary)
+                    {
+                        PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(cvr)
+                    }));
 
             return;
         }
@@ -409,7 +470,11 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
             if (string.IsNullOrEmpty(feedbackToken)) feedbackToken = vsr.Video.Id.Value;
 
             if (HistoryEntryId.TryParse(feedbackToken, out var entryId))
-                items.Add(new HistoryEntry(entryId, new VideoFeedItem(vsr.Video)));
+                items.Add(new HistoryEntry(entryId,
+                    new VideoFeedItem(vsr.Video)
+                    {
+                        PlaybackProgress = vsr.PlaybackProgress
+                    }));
 
             return;
         }

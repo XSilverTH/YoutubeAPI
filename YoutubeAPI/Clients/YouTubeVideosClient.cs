@@ -5,7 +5,7 @@ using YoutubeAPI.Models.Videos;
 namespace YoutubeAPI.Clients;
 
 /// <summary>
-///     Provides access to YouTube video metadata, details, and transcript operations.
+///     Provides access to YouTube video metadata, playback state, details, and transcript operations.
 /// </summary>
 public sealed class YouTubeVideosClient
 {
@@ -28,6 +28,24 @@ public sealed class YouTubeVideosClient
         return _handler == null
             ? throw new NotSupportedException("Videos handler is not configured.")
             : _handler.GetAsync(videoId, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Gets the authenticated viewer's watch progress and saved resume position for a video.
+    /// </summary>
+    /// <param name="videoId">The unique video identifier.</param>
+    /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+    /// <returns>
+    ///     A task yielding the playback state supplied by YouTube, or <c>null</c> when the response does not
+    ///     contain viewer-specific state.
+    /// </returns>
+    /// <exception cref="NotSupportedException">Thrown when no underlying handler is configured.</exception>
+    public Task<VideoPlaybackProgress?> GetPlaybackProgressAsync(VideoId videoId,
+        CancellationToken cancellationToken = default)
+    {
+        return _handler == null
+            ? throw new NotSupportedException("Videos handler is not configured.")
+            : _handler.GetPlaybackProgressAsync(videoId, cancellationToken);
     }
 
     /// <summary>

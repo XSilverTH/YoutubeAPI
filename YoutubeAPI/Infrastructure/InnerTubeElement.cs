@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using YoutubeAPI.Models.Common;
+using YoutubeAPI.Models.Videos;
 
 namespace YoutubeAPI.Infrastructure;
 
@@ -232,6 +233,147 @@ internal static partial class InnerTubeElement
         }
 
         return (long)num;
+    }
+
+    /// <summary>
+    ///     Parses viewer-specific watch progress and saved resume state from any InnerTube response shape.
+    /// </summary>
+    public static VideoPlaybackProgress? ParsePlaybackProgress(JsonElement element)
+    {
+        var state = new PlaybackProgressState();
+        CollectPlaybackProgress(element, state);
+
+        if (!state.WatchedPercent.HasValue && !state.ResumePosition.HasValue && !state.IsCompleted)
+            return null;
+
+        var watchedFraction = state.WatchedPercent / 100;
+        if (watchedFraction is < 0 or > 1)
+            watchedFraction = null;
+
+        return new VideoPlaybackProgress(watchedFraction, state.ResumePosition,
+            state.IsCompleted || watchedFraction >= 1);
+    }
+
+    private static void CollectPlaybackProgress(JsonElement element, PlaybackProgressState state,
+        bool allowWatchEndpointStartTime = false)
+    {
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var child in element.EnumerateArray())
+                CollectPlaybackProgress(child, state, allowWatchEndpointStartTime);
+            return;
+        }
+
+        if (element.ValueKind != JsonValueKind.Object)
+            return;
+
+        foreach (var property in element.EnumerateObject())
+        {
+            var name = property.Name;
+            var value = property.Value;
+            if (value.ValueKind == JsonValueKind.String &&
+                IsCompletionLabel(value.GetString()))
+                state.IsCompleted = true;
+            else if (name.Equals("percentDurationWatched", StringComparison.OrdinalIgnoreCase) ||
+                     name.Equals("percentWatched", StringComparison.OrdinalIgnoreCase) ||
+                     name.Equals("watchedPercent", StringComparison.OrdinalIgnoreCase))
+                state.SetWatchedPercent(ParseFiniteNumber(value), 3);
+            else if (name.Equals("startPercent", StringComparison.OrdinalIgnoreCase))
+                state.SetWatchedPercent(ParseFiniteNumber(value), 2);
+            else if (name.Equals("endPercent", StringComparison.OrdinalIgnoreCase))
+                state.SetWatchedPercent(ParseFiniteNumber(value), 1);
+            else if (name.Equals("isWatched", StringComparison.OrdinalIgnoreCase) ||
+                     name.Equals("isCompleted", StringComparison.OrdinalIgnoreCase))
+            {
+                if (value.ValueKind is JsonValueKind.True or JsonValueKind.False && value.GetBoolean())
+                    state.IsCompleted = true;
+            }
+            else if (name.Equals("watchState", StringComparison.OrdinalIgnoreCase) &&
+                     value.ValueKind == JsonValueKind.String &&
+                     value.GetString()?.Contains("COMPLETE", StringComparison.OrdinalIgnoreCase) == true)
+                state.IsCompleted = true;
+            else if (allowWatchEndpointStartTime && name.Equals("startTimeSeconds", StringComparison.OrdinalIgnoreCase))
+                state.SetResumePosition(ParseResumePosition("resumePlaybackPositionSeconds", value));
+            else if (IsResumePositionName(name))
+                state.SetResumePosition(ParseResumePosition(name, value));
+
+            var childAllowsStartTime = allowWatchEndpointStartTime &&
+                                       name.Equals("watchEndpoint", StringComparison.OrdinalIgnoreCase);
+            if (name.Equals("currentVideoEndpoint", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("navigationEndpoint", StringComparison.OrdinalIgnoreCase))
+                childAllowsStartTime = true;
+            CollectPlaybackProgress(value, state, childAllowsStartTime);
+        }
+    }
+
+    private static bool IsCompletionLabel(string? value)
+    {
+        return string.Equals(value?.Trim(), "WATCHED", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value?.Trim(), "COMPLETED", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsResumePositionName(string name)
+    {
+        return name.Equals("resumePlaybackPositionMs", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("resumePlaybackPositionSeconds", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("playbackPositionMs", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("playbackPositionSeconds", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("savedPlaybackPositionMs", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("savedPlaybackPositionSeconds", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("resumePositionMs", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("resumePositionSeconds", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("playbackPosition", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("resumePosition", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static TimeSpan? ParseResumePosition(string name, JsonElement value)
+    {
+        var number = ParseFiniteNumber(value);
+        if (!number.HasValue || number < 0)
+            return null;
+
+        var milliseconds = name.EndsWith("Ms", StringComparison.OrdinalIgnoreCase)
+            ? number.Value
+            : number.Value * 1000;
+        if (milliseconds > TimeSpan.MaxValue.TotalMilliseconds)
+            return null;
+
+        return TimeSpan.FromMilliseconds(milliseconds);
+    }
+
+    private static double? ParseFiniteNumber(JsonElement value)
+    {
+        double number;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out number) ||
+            value.ValueKind == JsonValueKind.String &&
+            double.TryParse(value.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out number))
+            return double.IsFinite(number) ? number : null;
+
+        return null;
+    }
+
+    private sealed class PlaybackProgressState
+    {
+        public double? WatchedPercent { get; private set; }
+        public int WatchedPercentPriority { get; private set; }
+        public TimeSpan? ResumePosition { get; private set; }
+        public bool IsCompleted { get; set; }
+
+        public void SetWatchedPercent(double? value, int priority)
+        {
+            if (!value.HasValue || value is < 0 or > 100 ||
+                WatchedPercentPriority > priority)
+                return;
+
+            WatchedPercent = value;
+            WatchedPercentPriority = priority;
+        }
+
+        public void SetResumePosition(TimeSpan? value)
+        {
+            if (value.HasValue && !ResumePosition.HasValue)
+                ResumePosition = value;
+        }
     }
 
     public static DateTimeOffset? ParseRelativeDate(string? text)

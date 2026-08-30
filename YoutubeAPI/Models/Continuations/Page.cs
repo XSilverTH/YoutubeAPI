@@ -1,3 +1,7 @@
+using System.Text.Json.Serialization;
+using YoutubeAPI.Models.ValueTypes;
+using YoutubeAPI.Models.Videos;
+
 namespace YoutubeAPI.Models.Continuations;
 
 /// <summary>
@@ -10,4 +14,11 @@ namespace YoutubeAPI.Models.Continuations;
 public sealed record Page<TItem, TContinuation>(
     IReadOnlyList<TItem> Items,
     TContinuation? Next)
-    where TContinuation : class;
+    where TContinuation : class
+{
+    /// <summary>
+    ///     Gets playback state keyed by video ID when the response supplied it, or <c>null</c>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<VideoId, VideoPlaybackProgress>? PlaybackProgress { get; init; }
+}

@@ -474,8 +474,8 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
 
         var title = pvr.GetText("title");
         var isPlayable = pvr.TryGetProperty("isPlayable", out var ip) && ip.ValueKind == JsonValueKind.True;
-
         VideoSummary? videoSummary = null;
+        VideoPlaybackProgress? playbackProgress = null;
         if (string.IsNullOrEmpty(videoIdStr) || !VideoId.TryParse(videoIdStr, out _))
             return new PlaylistItem(
                 itemId,
@@ -492,6 +492,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
                 string.IsNullOrEmpty(title) ? videoSummary?.Title ?? "Video" : title,
                 isPlayable);
         videoSummary = summary;
+        playbackProgress = InnerTubeElement.ParsePlaybackProgress(pvr);
         isPlayable = true;
 
         return new PlaylistItem(
@@ -499,7 +500,10 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
             position,
             videoSummary,
             string.IsNullOrEmpty(title) ? videoSummary.Title : title,
-            isPlayable);
+            isPlayable)
+        {
+            PlaybackProgress = playbackProgress
+        };
     }
 
     private static PlaylistItem ParseLockupPlaylistItem(JsonElement lockup, int position)
@@ -517,14 +521,24 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
                 string.IsNullOrEmpty(title) ? "Video" : title,
                 videoSummary != null);
         var res = SearchHandler.ParseLockupViewModel(lockup);
-        if (res is VideoSearchResult vsr) videoSummary = vsr.Video;
+        if (res is not VideoSearchResult vsr)
+            return new PlaylistItem(
+                null,
+                position,
+                videoSummary,
+                string.IsNullOrEmpty(title) ? "Video" : title,
+                false);
+        videoSummary = vsr.Video;
 
         return new PlaylistItem(
             null,
             position,
             videoSummary,
             string.IsNullOrEmpty(title) ? "Video" : title,
-            videoSummary != null);
+            true)
+        {
+            PlaybackProgress = vsr.PlaybackProgress
+        };
     }
 
     private static void CollectOwnedPlaylists(

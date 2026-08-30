@@ -19,4 +19,10 @@ public sealed record PlaylistItem(
     int? Position,
     VideoSummary? Video,
     string DisplayTitle,
-    bool IsAvailable);
+    bool IsAvailable)
+{
+    /// <summary>
+    ///     Gets the authenticated viewer's playback state when supplied by this response, or <c>null</c>.
+    /// </summary>
+    public VideoPlaybackProgress? PlaybackProgress { get; init; }
+}

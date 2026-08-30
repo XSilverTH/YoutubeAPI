@@ -25,6 +25,7 @@ namespace YoutubeAPI.Infrastructure;
 [JsonSerializable(typeof(PlaylistFeedItem))]
 [JsonSerializable(typeof(Profile))]
 [JsonSerializable(typeof(VideoSummary))]
+[JsonSerializable(typeof(VideoPlaybackProgress))]
 [JsonSerializable(typeof(Video))]
 [JsonSerializable(typeof(ChannelSummary))]
 [JsonSerializable(typeof(Channel))]

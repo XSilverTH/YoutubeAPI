@@ -18,7 +18,13 @@ public abstract record FeedItem;
 ///     Represents a video feed item.
 /// </summary>
 /// <param name="Video">The summary of the video item.</param>
-public sealed record VideoFeedItem(VideoSummary Video) : FeedItem;
+public sealed record VideoFeedItem(VideoSummary Video) : FeedItem
+{
+    /// <summary>
+    ///     Gets the authenticated viewer's playback state when supplied by this response, or <c>null</c>.
+    /// </summary>
+    public VideoPlaybackProgress? PlaybackProgress { get; init; }
+}
 
 /// <summary>
 ///     Represents a channel feed item.

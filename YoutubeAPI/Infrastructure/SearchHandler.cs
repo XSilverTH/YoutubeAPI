@@ -111,12 +111,47 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
             if (item.TryGetProperty("videoRenderer", out var vr))
             {
                 var summary = ParseVideoSummary(vr);
-                if (summary != null) items.Add(new VideoSearchResult(summary));
+                if (summary != null)
+                    items.Add(new VideoSearchResult(summary)
+                    {
+                        PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(vr)
+                    });
             }
             else if (item.TryGetProperty("gridVideoRenderer", out var gvr))
             {
                 var summary = ParseVideoSummary(gvr);
-                if (summary != null) items.Add(new VideoSearchResult(summary));
+                if (summary != null)
+                    items.Add(new VideoSearchResult(summary)
+                    {
+                        PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(gvr)
+                    });
+            }
+            else if (item.TryGetProperty("compactVideoRenderer", out var cvr))
+            {
+                var summary = ParseVideoSummary(cvr);
+                if (summary != null)
+                    items.Add(new VideoSearchResult(summary)
+                    {
+                        PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(cvr)
+                    });
+            }
+            else if (item.TryGetProperty("playlistPanelVideoRenderer", out var ppvr))
+            {
+                var summary = ParseVideoSummary(ppvr);
+                if (summary != null)
+                    items.Add(new VideoSearchResult(summary)
+                    {
+                        PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(ppvr)
+                    });
+            }
+            else if (item.TryGetProperty("videoWithContextRenderer", out var vwcr))
+            {
+                var summary = ParseVideoSummary(vwcr);
+                if (summary != null)
+                    items.Add(new VideoSearchResult(summary)
+                    {
+                        PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(vwcr)
+                    });
             }
             else if (item.TryGetProperty("channelRenderer", out var cr))
             {
@@ -315,7 +350,6 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
         var publication = ParseLockupPublication(metadata);
 
         var thumbnails = lockup.GetPropertyOrDefault("contentImage").GetThumbnails();
-
         if (contentType.Contains("VIDEO", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(contentId) &&
             VideoId.TryParse(contentId, out var videoId))
         {
@@ -331,7 +365,10 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
                 publication.PublishedAt,
                 false,
                 new VideoStatistics(null, null, null));
-            return new VideoSearchResult(summary);
+            return new VideoSearchResult(summary)
+            {
+                PlaybackProgress = InnerTubeElement.ParsePlaybackProgress(lockup)
+            };
         }
 
         if (!contentType.Contains("PLAYLIST", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(contentId) ||

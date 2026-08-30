@@ -22,6 +22,23 @@ public class AuthenticatedLiveTests
     }
 
     [Fact]
+    public async Task GetPlaybackProgressAsyncLiveReturnsNullablePlaybackState()
+    {
+        if (!LiveTestEnvironment.IsAuthenticatedEnabled())
+            return;
+
+        using var client = LiveTestEnvironment.CreateAuthenticatedClient();
+        Assert.NotNull(client);
+
+        var progress = await client.Videos.GetPlaybackProgressAsync(VideoId.Parse(LiveTestEnvironment.KnownPublicVideoId));
+        if (progress == null)
+            return;
+
+        Assert.InRange(progress.WatchedFraction ?? 0, 0, 1);
+        Assert.True(progress.ResumePosition == null || progress.ResumePosition >= TimeSpan.Zero);
+    }
+
+    [Fact]
     public async Task GetHomePageAsyncLiveReturnsPersonalizedFeed()
     {
         if (!LiveTestEnvironment.IsAuthenticatedEnabled())
