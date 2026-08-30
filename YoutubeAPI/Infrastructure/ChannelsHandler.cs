@@ -107,7 +107,7 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         return ParseChannelPlaylistsResponse(doc.RootElement, continuation.Channel);
     }
 
-    private static ChannelSummary ParseChannelHeader(JsonElement root, ChannelReference channelRef)
+    internal static ChannelSummary ParseChannelHeader(JsonElement root, ChannelReference channelRef)
     {
         JsonElement header = default;
         if (root.TryGetProperty("header", out var h))
@@ -121,6 +121,15 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
             else
                 header = h;
         }
+        if (header.ValueKind == JsonValueKind.Object)
+        {
+            if (header.TryGetProperty("pageHeaderViewModel", out var pageHeaderViewModel))
+                header = pageHeaderViewModel;
+            else if (header.TryGetProperty("content", out var content) &&
+                     content.TryGetProperty("pageHeaderViewModel", out pageHeaderViewModel))
+                header = pageHeaderViewModel;
+        }
+
 
         var title = header.GetText("pageTitle");
         if (string.IsNullOrEmpty(title))

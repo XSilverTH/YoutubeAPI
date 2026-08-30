@@ -65,6 +65,59 @@ public class ParserTests
         Assert.Equal(100, list[0].Width);
         Assert.Equal(100, list[0].Height);
     }
+    [Fact]
+    public void ParseChannelHeaderExtractsModernPageHeaderAvatar()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "header": {
+                "pageHeaderRenderer": {
+                  "content": {
+                    "pageHeaderViewModel": {
+                      "title": {
+                        "dynamicTextViewModel": {
+                          "text": {"content": "Modern Channel"}
+                        }
+                      },
+                      "image": {
+                        "decoratedAvatarViewModel": {
+                          "avatar": {
+                            "avatarViewModel": {
+                              "image": {
+                                "sources": [{
+                                  "url": "https://yt3.ggpht.com/modern-avatar=s160-c-k-c0x00ffffff-no-rj",
+                                  "width": 160,
+                                  "height": 160
+                                }]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "metadata": {
+                "channelMetadataRenderer": {
+                  "externalId": "UC1234567890123456789012"
+                }
+              }
+            }
+            """);
+
+        var summary = ChannelsHandler.ParseChannelHeader(
+            doc.RootElement,
+            new YoutubeAPI.Models.ValueTypes.ChannelReference("@modern"));
+
+        Assert.NotNull(summary);
+        Assert.Equal("Modern Channel", summary.Title);
+        var avatar = Assert.Single(summary.Thumbnails);
+        Assert.Equal("https://yt3.ggpht.com/modern-avatar=s160-c-k-c0x00ffffff-no-rj", avatar.Url.ToString());
+        Assert.Equal(160, avatar.Width);
+        Assert.Equal(160, avatar.Height);
+    }
+
 
     [Fact]
     public void ParseVideoSummaryUsesNextBylineWhenOwnerTextHasNoText()

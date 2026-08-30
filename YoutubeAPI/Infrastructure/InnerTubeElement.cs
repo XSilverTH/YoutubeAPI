@@ -15,6 +15,25 @@ internal static partial class InnerTubeElement
     [GeneratedRegex(@"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago", RegexOptions.IgnoreCase)]
     private static partial Regex RelativeDateRegex();
 
+    private static readonly string[] ThumbnailWrapperProperties =
+    [
+        "thumbnail",
+        "thumbnailViewModel",
+        "channelThumbnailWithLinkRenderer",
+        "decoratedAvatarViewModel",
+        "avatar",
+        "avatarViewModel",
+        "image"
+    ];
+
+    private static readonly string[] TextWrapperProperties =
+    [
+        "dynamicTextViewModel",
+        "pageHeaderTitleViewModel",
+        "textViewModel",
+        "text"
+    ];
+
     extension(JsonElement element)
     {
         public JsonElement GetPropertyOrDefault(string propertyName)
@@ -43,6 +62,7 @@ internal static partial class InnerTubeElement
             {
                 var sb = new StringBuilder();
                 foreach (var run in runsEl.EnumerateArray())
+
                     if (run.TryGetProperty("text", out var textEl) && textEl.ValueKind == JsonValueKind.String)
                         sb.Append(textEl.GetString());
                     else if (run.TryGetProperty("content", out var runContentEl) &&
@@ -50,6 +70,13 @@ internal static partial class InnerTubeElement
 
                 return sb.ToString();
             }
+            foreach (var textPropertyName in TextWrapperProperties)
+                if (element.TryGetProperty(textPropertyName, out var nested))
+                {
+                    var text = nested.GetText(string.Empty);
+                    if (!string.IsNullOrEmpty(text))
+                        return text;
+                }
 
             if (element.TryGetProperty("accessibility", out var accessibility) &&
                 accessibility.TryGetProperty("accessibilityData", out var accessibilityData) &&
@@ -70,46 +97,76 @@ internal static partial class InnerTubeElement
                 if (element.TryGetProperty(propertyName, out var prop))
                     target = prop;
                 else if (element.TryGetProperty("thumbnail", out var thumbProp))
-                    target = thumbProp.TryGetProperty("thumbnails", out var subProp) ? subProp : thumbProp;
+                    target = thumbProp;
                 else if (element.TryGetProperty("thumbnailViewModel", out var vmProp))
-                    target = vmProp.TryGetProperty("image", out var img) && img.TryGetProperty("sources", out var src)
-                        ? src
-                        : vmProp;
-                else if (element.TryGetProperty("image", out var imgProp) &&
-                         imgProp.TryGetProperty("sources", out var sources))
-                    target = sources;
-                else if (element.TryGetProperty("avatarViewModel", out var avm) &&
-                         avm.TryGetProperty("image", out var avmImg) &&
-                         avmImg.TryGetProperty("sources", out var avmSrc)) target = avmSrc;
+                    target = vmProp;
+                else if (element.TryGetProperty("image", out var imageProp))
+                    target = imageProp;
+                else if (element.TryGetProperty("avatarViewModel", out var avatarProp))
+                    target = avatarProp;
+                else if (element.TryGetProperty("decoratedAvatarViewModel", out var decoratedAvatarProp))
+                    target = decoratedAvatarProp;
             }
 
-            target = target.ValueKind switch
-            {
-                JsonValueKind.Object when target.TryGetProperty("thumbnails", out var innerThumbs) => innerThumbs,
-                JsonValueKind.Object when target.TryGetProperty("sources", out var innerSources) => innerSources,
-                _ => target
-            };
-
-            if (target.ValueKind != JsonValueKind.Array) return list;
-            foreach (var item in target.EnumerateArray())
-            {
-                var urlStr = item.TryGetProperty("url", out var u) ? u.GetString() : null;
-                if (string.IsNullOrWhiteSpace(urlStr))
-                    continue;
-
-                if (urlStr.StartsWith("//", StringComparison.Ordinal)) urlStr = "https:" + urlStr;
-
-                if (!Uri.TryCreate(urlStr, UriKind.Absolute, out var uri)) continue;
-                var width = item.TryGetProperty("width", out var w) && w.TryGetInt32(out var widthVal)
-                    ? widthVal
-                    : 0;
-                var height = item.TryGetProperty("height", out var h) && h.TryGetInt32(out var heightVal)
-                    ? heightVal
-                    : 0;
-                list.Add(new Thumbnail(uri, width, height));
-            }
-
+            CollectThumbnails(target, list);
             return list;
+        }
+
+        private static void CollectThumbnails(JsonElement node, List<Thumbnail> thumbnails)
+        {
+            if (node.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in node.EnumerateArray())
+                    CollectThumbnails(item, thumbnails);
+
+                return;
+            }
+
+            if (node.ValueKind != JsonValueKind.Object)
+                return;
+
+            if (node.TryGetProperty("url", out var urlElement) &&
+                urlElement.ValueKind == JsonValueKind.String)
+            {
+                var url = urlElement.GetString();
+                if (!string.IsNullOrWhiteSpace(url))
+                {
+                    if (url.StartsWith("//", StringComparison.Ordinal)) url = "https:" + url;
+                    if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                    {
+                        var width = node.TryGetProperty("width", out var widthElement) &&
+                                    widthElement.TryGetInt32(out var widthValue)
+                            ? widthValue
+                            : 0;
+                        var height = node.TryGetProperty("height", out var heightElement) &&
+                                     heightElement.TryGetInt32(out var heightValue)
+                            ? heightValue
+                            : 0;
+                        thumbnails.Add(new Thumbnail(uri, width, height));
+                    }
+                }
+
+                return;
+            }
+
+            if (node.TryGetProperty("thumbnails", out var nestedThumbnails))
+            {
+                CollectThumbnails(nestedThumbnails, thumbnails);
+                return;
+            }
+
+            if (node.TryGetProperty("sources", out var sources))
+            {
+                CollectThumbnails(sources, thumbnails);
+                return;
+            }
+
+            foreach (var propertyName in ThumbnailWrapperProperties)
+                if (node.TryGetProperty(propertyName, out var nested))
+                {
+                    CollectThumbnails(nested, thumbnails);
+                    return;
+                }
         }
 
         public bool IsVerified()
