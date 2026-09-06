@@ -230,6 +230,7 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
         var viewCountText = vr.GetText("viewCountText");
         var viewCount = InnerTubeElement.ParseCount(viewCountText);
 
+        var isShort = IsShortVideo(vr, duration);
         var stats = new VideoStatistics(viewCount, null, null);
         return new VideoSummary(
             videoId,
@@ -240,7 +241,7 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
             thumbnails,
             string.IsNullOrEmpty(publishedText) ? null : publishedText,
             publishedAt,
-            false,
+            isShort,
             stats);
     }
 
@@ -326,9 +327,19 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
         var metadata = lockup.GetPropertyOrDefault("metadata").GetPropertyOrDefault("lockupMetadataViewModel");
         var title = metadata.GetPropertyOrDefault("title").GetText();
         var publication = ParseLockupPublication(metadata);
-
         var thumbnails = lockup.GetPropertyOrDefault("contentImage").GetThumbnails();
-        if (contentType.Contains("VIDEO", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(contentId) &&
+
+        var isShort = contentType.Equals("LOCKUP_CONTENT_TYPE_SHORTS", StringComparison.OrdinalIgnoreCase) ||
+                      contentType.Contains("SHORTS", StringComparison.OrdinalIgnoreCase);
+
+        var duration = InnerTubeElement.ParseVideoDuration(lockup);
+        if (!isShort && duration is { TotalSeconds: > 0 and <= 60 } && HasReelOrShortsIndicators(lockup))
+        {
+            isShort = true;
+        }
+
+        var isVideo = contentType.Contains("VIDEO", StringComparison.OrdinalIgnoreCase) || isShort;
+        if (isVideo && !string.IsNullOrEmpty(contentId) &&
             VideoId.TryParse(contentId, out var videoId))
         {
             var channel = ParseLockupChannel(metadata);
@@ -346,12 +357,12 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
                 videoId,
                 title,
                 channel,
-                InnerTubeElement.ParseVideoDuration(lockup),
+                duration,
                 new Uri($"https://www.youtube.com/watch?v={videoId}"),
                 thumbnails,
                 publication.PublishedText,
                 publication.PublishedAt,
-                false,
+                isShort,
                 new VideoStatistics(null, null, null));
             return new VideoSearchResult(summary)
             {
@@ -445,5 +456,147 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
         }
 
         return (null, null);
+    }
+
+    public static bool IsShortVideo(JsonElement vr, TimeSpan? duration = null)
+    {
+        if (vr.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (vr.TryGetProperty("navigationEndpoint", out var nav) ||
+            vr.TryGetProperty("onTap", out nav) ||
+            vr.TryGetProperty("endpoint", out nav))
+        {
+            if (CheckEndpointForShorts(nav))
+                return true;
+        }
+
+        if (vr.TryGetProperty("thumbnailOverlays", out var overlays) && overlays.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var overlay in overlays.EnumerateArray())
+            {
+                if (overlay.TryGetProperty("thumbnailOverlayTimeStatusRenderer", out var timeStatus))
+                {
+                    var style = timeStatus.TryGetProperty("style", out var s) ? s.GetString() : null;
+                    if (string.Equals(style, "SHORTS", StringComparison.OrdinalIgnoreCase))
+                        return true;
+
+                    var text = timeStatus.GetText("text");
+                    if (string.Equals(text, "SHORTS", StringComparison.OrdinalIgnoreCase) ||
+                        text.Contains("SHORTS", StringComparison.OrdinalIgnoreCase))
+                        return true;
+
+                    if (timeStatus.TryGetProperty("icon", out var icon) &&
+                        icon.TryGetProperty("iconType", out var iconType) &&
+                        iconType.GetString()?.Contains("SHORTS", StringComparison.OrdinalIgnoreCase) == true)
+                        return true;
+                }
+
+                if (overlay.TryGetProperty("thumbnailOverlayBadgeViewModel", out var badgeVm))
+                {
+                    var text = badgeVm.GetText();
+                    if (text.Contains("SHORTS", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+        }
+
+        if (vr.TryGetProperty("badges", out var badges) && badges.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var badge in badges.EnumerateArray())
+            {
+                if (badge.TryGetProperty("metadataBadgeRenderer", out var mbr))
+                {
+                    var style = mbr.TryGetProperty("style", out var s) ? s.GetString() : null;
+                    if (style?.Contains("SHORTS", StringComparison.OrdinalIgnoreCase) == true)
+                        return true;
+
+                    var label = mbr.GetText("label");
+                    if (label.Contains("SHORTS", StringComparison.OrdinalIgnoreCase))
+                        return true;
+
+                    var text = mbr.GetText();
+                    if (text.Contains("SHORTS", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+        }
+
+        duration ??= InnerTubeElement.ParseVideoDuration(vr);
+        if (duration is { TotalSeconds: > 0 and <= 60 } && HasReelOrShortsIndicators(vr))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool CheckEndpointForShorts(JsonElement endpoint)
+    {
+        if (endpoint.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (endpoint.TryGetProperty("reelWatchEndpoint", out _))
+            return true;
+
+        if (endpoint.TryGetProperty("commandMetadata", out var cmdMeta) &&
+            cmdMeta.TryGetProperty("webCommandMetadata", out var webCmd))
+        {
+            if (webCmd.TryGetProperty("url", out var urlEl) &&
+                urlEl.GetString() is { } url &&
+                url.Contains("/shorts/", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (webCmd.TryGetProperty("webPageType", out var wptEl) &&
+                wptEl.GetString() is { } wpt &&
+                wpt.Contains("SHORTS", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        if (endpoint.TryGetProperty("url", out var directUrl) &&
+            directUrl.GetString() is { } dUrl &&
+            dUrl.Contains("/shorts/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (endpoint.TryGetProperty("innertubeCommand", out var innerCmd))
+            return CheckEndpointForShorts(innerCmd);
+
+        return false;
+    }
+
+    private static bool HasReelOrShortsIndicators(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (element.TryGetProperty("reelWatchEndpoint", out _) ||
+            element.TryGetProperty("reelItemRenderer", out _) ||
+            element.TryGetProperty("reelPlayerHeaderRenderer", out _))
+            return true;
+
+        if (element.TryGetProperty("navigationEndpoint", out var nav) && CheckEndpointForShorts(nav))
+            return true;
+
+        if (element.TryGetProperty("onTap", out var onTap) && CheckEndpointForShorts(onTap))
+            return true;
+
+        if (element.TryGetProperty("rendererContext", out var rc) &&
+            rc.TryGetProperty("commandContext", out var cc) &&
+            cc.TryGetProperty("onTap", out var ccOnTap) &&
+            CheckEndpointForShorts(ccOnTap))
+            return true;
+
+        var title = element.GetText("title");
+        if (string.IsNullOrEmpty(title))
+            title = element.GetPropertyOrDefault("metadata").GetPropertyOrDefault("lockupMetadataViewModel").GetPropertyOrDefault("title").GetText();
+
+        if (title.Contains("#shorts", StringComparison.OrdinalIgnoreCase) ||
+            title.Contains("#short", StringComparison.OrdinalIgnoreCase))
+            return true;
+        var a11y = element.GetPropertyOrDefault("accessibility").GetPropertyOrDefault("accessibilityData").GetText("label");
+        if (a11y.Contains("Shorts", StringComparison.OrdinalIgnoreCase) || a11y.Contains("Short", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
     }
 }

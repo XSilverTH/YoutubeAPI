@@ -511,4 +511,174 @@ public class ParserTests
         Assert.NotNull(modernProgress);
         Assert.Equal(classicProgress.WatchedFraction, modernProgress.WatchedFraction);
     }
+
+    [Fact]
+    public void ParseVideoSummaryWithReelWatchEndpointDetectsShort()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "videoId": "dQw4w9WgXcQ",
+              "title": {"simpleText": "Short Video"},
+              "navigationEndpoint": {
+                "reelWatchEndpoint": {
+                  "videoId": "dQw4w9WgXcQ"
+                }
+              }
+            }
+            """);
+
+        var summary = SearchHandler.ParseVideoSummary(doc.RootElement);
+        Assert.NotNull(summary);
+        Assert.True(summary.IsShort);
+    }
+
+    [Fact]
+    public void ParseVideoSummaryWithShortsNavigationUrlDetectsShort()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "videoId": "dQw4w9WgXcQ",
+              "title": {"simpleText": "Short Video"},
+              "navigationEndpoint": {
+                "commandMetadata": {
+                  "webCommandMetadata": {
+                    "url": "/shorts/dQw4w9WgXcQ"
+                  }
+                }
+              }
+            }
+            """);
+
+        var summary = SearchHandler.ParseVideoSummary(doc.RootElement);
+        Assert.NotNull(summary);
+        Assert.True(summary.IsShort);
+    }
+
+    [Fact]
+    public void ParseVideoSummaryWithThumbnailOverlayStyleShortsDetectsShort()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "videoId": "dQw4w9WgXcQ",
+              "title": {"simpleText": "Short Video"},
+              "thumbnailOverlays": [
+                {
+                  "thumbnailOverlayTimeStatusRenderer": {
+                    "style": "SHORTS",
+                    "text": {"simpleText": "SHORTS"}
+                  }
+                }
+              ]
+            }
+            """);
+
+        var summary = SearchHandler.ParseVideoSummary(doc.RootElement);
+        Assert.NotNull(summary);
+        Assert.True(summary.IsShort);
+    }
+
+    [Fact]
+    public void ParseVideoSummaryWithBadgesShortsDetectsShort()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "videoId": "dQw4w9WgXcQ",
+              "title": {"simpleText": "Short Video"},
+              "badges": [
+                {
+                  "metadataBadgeRenderer": {
+                    "label": "SHORTS"
+                  }
+                }
+              ]
+            }
+            """);
+
+        var summary = SearchHandler.ParseVideoSummary(doc.RootElement);
+        Assert.NotNull(summary);
+        Assert.True(summary.IsShort);
+    }
+
+    [Fact]
+    public void ParseVideoSummaryWithDurationUnder60sAndShortIndicatorDetectsShort()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "videoId": "dQw4w9WgXcQ",
+              "title": {"simpleText": "Funny Cat #shorts"},
+              "lengthText": {"simpleText": "0:30"}
+            }
+            """);
+
+        var summary = SearchHandler.ParseVideoSummary(doc.RootElement);
+        Assert.NotNull(summary);
+        Assert.True(summary.IsShort);
+    }
+
+    [Fact]
+    public void ParseVideoSummaryStandardVideoIsNotShort()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "videoId": "dQw4w9WgXcQ",
+              "title": {"simpleText": "Regular Video"},
+              "lengthText": {"simpleText": "10:30"}
+            }
+            """);
+
+        var summary = SearchHandler.ParseVideoSummary(doc.RootElement);
+        Assert.NotNull(summary);
+        Assert.False(summary.IsShort);
+    }
+
+    [Fact]
+    public void ParseLockupViewModelWithShortsContentTypeDetectsShort()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "contentType": "LOCKUP_CONTENT_TYPE_SHORTS",
+              "contentId": "dQw4w9WgXcQ",
+              "metadata": {
+                "lockupMetadataViewModel": {
+                  "title": {"content": "Short Title"}
+                }
+              }
+            }
+            """);
+
+        var result = SearchHandler.ParseLockupViewModel(doc.RootElement);
+        var videoResult = Assert.IsType<YoutubeAPI.Models.Search.VideoSearchResult>(result);
+        Assert.True(videoResult.Video.IsShort);
+    }
+
+    [Fact]
+    public void ParseLockupViewModelWithDurationUnder60sAndReelIndicatorDetectsShort()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+              "contentId": "dQw4w9WgXcQ",
+              "metadata": {
+                "lockupMetadataViewModel": {
+                  "title": {"content": "Clip #shorts"}
+                }
+              },
+              "contentImage": {
+                "thumbnailViewModel": {
+                  "overlays": [
+                    {
+                      "thumbnailOverlayTimeStatusRenderer": {
+                        "text": {"simpleText": "0:45"}
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+            """);
+
+        var result = SearchHandler.ParseLockupViewModel(doc.RootElement);
+        var videoResult = Assert.IsType<YoutubeAPI.Models.Search.VideoSearchResult>(result);
+        Assert.True(videoResult.Video.IsShort);
+    }
 }

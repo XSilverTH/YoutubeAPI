@@ -68,6 +68,14 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                     // Ignore date conversion failure
                 }
 
+                var isShort = (nextData?.IsShort == true) ||
+                              (!string.IsNullOrWhiteSpace(explodeVideo.Url) &&
+                               explodeVideo.Url.Contains("/shorts/", StringComparison.OrdinalIgnoreCase)) ||
+                              (explodeVideo.Duration is { TotalSeconds: > 0 and <= 60 } &&
+                               (explodeVideo.Title.Contains("#shorts", StringComparison.OrdinalIgnoreCase) ||
+                                explodeVideo.Title.Contains("#short", StringComparison.OrdinalIgnoreCase) ||
+                                explodeVideo.Keywords.Any(k => k.Contains("shorts", StringComparison.OrdinalIgnoreCase))));
+
                 var summary = new VideoSummary(
                     videoId,
                     explodeVideo.Title,
@@ -77,9 +85,8 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                     thumbs,
                     nextData?.PublishedText,
                     explodeVideo.UploadDate,
-                    false,
+                    isShort,
                     stats);
-
                 return new Video(
                     summary,
                     explodeVideo.Description,
@@ -104,6 +111,12 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
 
                 var stats = new VideoStatistics(nextData.ViewCount, nextData.LikeCount, nextData.CommentCount);
 
+                var isShort = nextData.IsShort ||
+                              (nextData.Duration is { TotalSeconds: > 0 and <= 60 } &&
+                               (nextData.Title?.Contains("#shorts", StringComparison.OrdinalIgnoreCase) == true ||
+                                nextData.Title?.Contains("#short", StringComparison.OrdinalIgnoreCase) == true ||
+                                nextData.Keywords?.Any(k => k.Contains("shorts", StringComparison.OrdinalIgnoreCase)) == true));
+
                 var summary = new VideoSummary(
                     videoId,
                     nextData.Title ?? "Unknown",
@@ -113,7 +126,7 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                     nextData.Thumbnails ?? [],
                     nextData.PublishedText,
                     nextData.PublishedAt,
-                    false,
+                    isShort,
                     stats);
                 return new Video(
                     summary,
@@ -372,9 +385,15 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
             root.GetPropertyOrDefault("playerOverlays"));
         var progressFromEndpoint = InnerTubeElement.ParsePlaybackProgress(
             root.GetPropertyOrDefault("currentVideoEndpoint"));
+        var currentEndpoint = root.GetPropertyOrDefault("currentVideoEndpoint");
+        var isShort = IsShortEndpoint(currentEndpoint) ||
+                      root.TryGetProperty("reelWatchEndpoint", out _) ||
+                      root.GetPropertyOrDefault("playerOverlays").TryGetProperty("reelPlayerOverlayRenderer", out _) ||
+                      root.GetPropertyOrDefault("playerOverlays").TryGetProperty("reelPlayerHeaderRenderer", out _);
         var data = new NextVideoData
         {
-            PlaybackProgress = MergePlaybackProgress(progressFromOverlays, progressFromEndpoint)
+            PlaybackProgress = MergePlaybackProgress(progressFromOverlays, progressFromEndpoint),
+            IsShort = isShort
         };
 
         if (!root.TryGetProperty("contents", out var contents) ||
@@ -424,6 +443,36 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
             }
 
         return data;
+    }
+
+    private static bool IsShortEndpoint(JsonElement endpoint)
+    {
+        if (endpoint.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (endpoint.TryGetProperty("reelWatchEndpoint", out _))
+            return true;
+
+        if (endpoint.TryGetProperty("commandMetadata", out var cmdMeta) &&
+            cmdMeta.TryGetProperty("webCommandMetadata", out var webCmd))
+        {
+            if (webCmd.TryGetProperty("url", out var urlEl) &&
+                urlEl.GetString() is { } url &&
+                url.Contains("/shorts/", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (webCmd.TryGetProperty("webPageType", out var wptEl) &&
+                wptEl.GetString() is { } wpt &&
+                wpt.Contains("SHORTS", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        if (endpoint.TryGetProperty("url", out var directUrl) &&
+            directUrl.GetString() is { } dUrl &&
+            dUrl.Contains("/shorts/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
     }
 
     private async Task<JsonDocument?> FetchPlayerDocAsync(VideoId videoId, CancellationToken cancellationToken)
@@ -606,5 +655,6 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
         public IReadOnlyList<string>? Keywords { get; set; }
         public VideoPlaybackProgress? PlaybackProgress { get; set; }
         public LiveBroadcastState LiveState { get; } = LiveBroadcastState.None;
+        public bool IsShort { get; set; }
     }
 }
