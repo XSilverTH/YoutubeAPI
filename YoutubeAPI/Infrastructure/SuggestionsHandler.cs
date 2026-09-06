@@ -15,8 +15,7 @@ internal sealed class SuggestionsHandler(InnerTubeSession session) : IYouTubeSug
             $"https://suggestqueries-clients6.youtube.com/complete/search?client=firefox&hl={options.Language}&gl={options.Region}&q={Uri.EscapeDataString(query)}&ds=yt";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36");
+        request.Headers.UserAgent.ParseAdd(InnerTubeSession.DefaultUserAgent);
         request.Headers.Accept.ParseAdd("application/json, text/javascript, */*");
 
         HttpResponseMessage response;

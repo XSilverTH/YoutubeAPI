@@ -17,8 +17,8 @@ internal sealed partial class InnerTubeSession : IDisposable
     private const string DefaultApiKey = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
     private const string DefaultClientVersion = "2.20260828.01.00";
 
-    private const string DefaultUserAgent =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
+    internal const string DefaultUserAgent =
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
 
     private const string BaseYouTubeUrl = "https://www.youtube.com";
     private const string InnerTubeApiBase = "https://www.youtube.com/youtubei/v1/";
