@@ -202,10 +202,17 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
         }
 
         channelTitle ??= "Unknown";
-        channelIdStr ??= "UC_UNKNOWN";
-        var channelId = ChannelId.TryParse(channelIdStr, out var parsedChId)
-            ? parsedChId
-            : new ChannelId("UC0000000000000000000000");
+        if (string.IsNullOrWhiteSpace(channelIdStr) || !ChannelId.TryParse(channelIdStr, out var parsedChId))
+        {
+            var fallbackBrowseId = vr.GetPropertyOrDefault("channelThumbnailSupportedRenderers").FindBrowseId()
+                                  ?? vr.GetPropertyOrDefault("avatar").FindBrowseId()
+                                  ?? vr.FindBrowseId();
+            if (!string.IsNullOrWhiteSpace(fallbackBrowseId) && ChannelId.TryParse(fallbackBrowseId, out var fbId))
+                parsedChId = fbId;
+            else
+                parsedChId = new ChannelId("UC0000000000000000000000");
+        }
+        var channelId = parsedChId;
         var channelThumbs = vr.GetThumbnails("channelThumbnailSupportedRenderers");
         var isVerified = vr.IsVerified();
         var channelSummary = new ChannelSummary(
@@ -239,38 +246,10 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
 
     private static string? ExtractChannelId(JsonElement byline)
     {
-        if (byline.ValueKind != JsonValueKind.Object)
+        if (byline.ValueKind != JsonValueKind.Object && byline.ValueKind != JsonValueKind.Array)
             return null;
 
-        if (byline.TryGetProperty("channelId", out var channelId) &&
-            channelId.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(channelId.GetString()))
-            return channelId.GetString();
-
-        if (byline.TryGetProperty("browseEndpoint", out var directBrowseEndpoint) &&
-            directBrowseEndpoint.TryGetProperty("browseId", out var directBrowseId) &&
-            directBrowseId.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(directBrowseId.GetString()))
-            return directBrowseId.GetString();
-
-        if (byline.TryGetProperty("navigationEndpoint", out var endpoint) &&
-            endpoint.TryGetProperty("browseEndpoint", out var browseEndpoint) &&
-            browseEndpoint.TryGetProperty("browseId", out var browseId) &&
-            browseId.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(browseId.GetString()))
-            return browseId.GetString();
-
-        if (!byline.TryGetProperty("runs", out var runs) || runs.ValueKind != JsonValueKind.Array)
-            return null;
-
-        foreach (var run in runs.EnumerateArray())
-        {
-            var id = ExtractChannelId(run);
-            if (!string.IsNullOrWhiteSpace(id))
-                return id;
-        }
-
-        return null;
+        return byline.FindBrowseId();
     }
 
     public static ChannelSummary? ParseChannelSummary(JsonElement cr)
@@ -353,6 +332,16 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
             VideoId.TryParse(contentId, out var videoId))
         {
             var channel = ParseLockupChannel(metadata);
+            if (channel.Id.Value == "UC0000000000000000000000" && lockup.FindBrowseId() is { } fallbackId &&
+                ChannelId.TryParse(fallbackId, out var fbChannelId))
+            {
+                channel = channel with
+                {
+                    Id = fbChannelId,
+                    Url = new Uri($"https://www.youtube.com/channel/{fbChannelId}")
+                };
+            }
+
             var summary = new VideoSummary(
                 videoId,
                 title,
@@ -408,7 +397,7 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
                     if (string.IsNullOrWhiteSpace(channelTitle) &&
                         part.TryGetProperty("text", out var text))
                         channelTitle = text.GetText();
-                    channelIdText ??= FindBrowseId(part);
+                    channelIdText ??= part.FindBrowseId();
                 }
 
                 if (!string.IsNullOrWhiteSpace(channelTitle) && !string.IsNullOrWhiteSpace(channelIdText))
@@ -416,7 +405,7 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
             }
         }
 
-        channelIdText ??= FindBrowseId(metadata);
+        channelIdText ??= metadata.FindBrowseId();
 
         var channelId = ChannelId.TryParse(channelIdText, out var parsed)
             ? parsed
@@ -456,23 +445,5 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
         }
 
         return (null, null);
-    }
-
-    private static string? FindBrowseId(JsonElement element)
-    {
-        if (element.ValueKind != JsonValueKind.Object)
-            return null;
-        if (element.TryGetProperty("browseEndpoint", out var browseEndpoint) &&
-            browseEndpoint.TryGetProperty("browseId", out var browseId) &&
-            browseId.ValueKind == JsonValueKind.String)
-            return browseId.GetString();
-        foreach (var property in element.EnumerateObject())
-        {
-            var result = FindBrowseId(property.Value);
-            if (!string.IsNullOrWhiteSpace(result))
-                return result;
-        }
-
-        return null;
     }
 }

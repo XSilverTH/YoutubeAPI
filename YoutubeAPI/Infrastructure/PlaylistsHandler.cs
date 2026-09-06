@@ -302,7 +302,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
                         nav.TryGetProperty("browseEndpoint", out var be) &&
                         be.TryGetProperty("browseId", out var bid))
                         channelIdStr = bid.GetString();
-
+                    channelIdStr ??= vor.FindBrowseId();
                     var channelId = ChannelId.TryParse(channelIdStr, out var cid)
                         ? cid
                         : new ChannelId("UC0000000000000000000000");

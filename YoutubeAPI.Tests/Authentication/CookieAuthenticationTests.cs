@@ -202,6 +202,7 @@ public sealed class CookieAuthenticationTests
         Assert.Null(auth1.Secure3Papisid);
         Assert.Equal("sapisid_token_123", auth1.GetSapisidOrSecure());
         Assert.Equal("sapisid_token_123", auth1.GetRequiredSapisid());
+        Assert.True(auth1.HasAuthenticationCookies);
 
         // 2. With __Secure-3PAPISID only
         var with3Papisid = $".youtube.com\tTRUE\t/\tTRUE\t{futureExpiry}\t__Secure-3PAPISID\tsecure_3p_token_456\n";
@@ -210,6 +211,7 @@ public sealed class CookieAuthenticationTests
         Assert.Equal("secure_3p_token_456", auth2.Secure3Papisid);
         Assert.Equal("secure_3p_token_456", auth2.GetSapisidOrSecure());
         Assert.Equal("secure_3p_token_456", auth2.GetRequiredSapisid());
+        Assert.True(auth2.HasAuthenticationCookies);
 
         // 3. Without SAPISID or __Secure-3PAPISID
         var otherCookies = $".youtube.com\tTRUE\t/\tTRUE\t{futureExpiry}\tOTHER_COOKIE\tother_val\n";
@@ -218,5 +220,6 @@ public sealed class CookieAuthenticationTests
         Assert.Null(auth3.Secure3Papisid);
         Assert.Null(auth3.GetSapisidOrSecure());
         Assert.Throws<AuthenticationRequiredException>(auth3.GetRequiredSapisid);
+        Assert.False(auth3.HasAuthenticationCookies);
     }
 }

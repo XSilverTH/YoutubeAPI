@@ -144,7 +144,7 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
             ? extId.GetString()
             : channelRef.Value.StartsWith("UC", StringComparison.Ordinal)
                 ? channelRef.Value
-                : null;
+                : root.FindBrowseId() ?? header.FindBrowseId();
 
         var channelId = ChannelId.TryParse(channelIdStr, out var parsedChId)
             ? parsedChId

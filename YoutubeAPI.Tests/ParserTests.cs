@@ -163,6 +163,81 @@ public class ParserTests
     }
 
     [Fact]
+    public void ParseVideoSummaryResolvesCollaborationDialogAndThumbnailChannelId()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "videoId": "A4KxN7AdXF8",
+              "title": {"runs": [{"text": "Coming Out as a Virgin"}]},
+              "longBylineText": {
+                "runs": [{
+                  "text": "Hart and Plan3",
+                  "navigationEndpoint": {
+                    "showDialogCommand": {
+                      "panelLoadingStrategy": {
+                        "inlineContent": {
+                          "dialogViewModel": {
+                            "customContent": {
+                              "listViewModel": {
+                                "listItems": [{
+                                  "listItemViewModel": {
+                                    "rendererContext": {
+                                      "commandContext": {
+                                        "onTap": {
+                                          "innertubeCommand": {
+                                            "browseEndpoint": {"browseId": "UCHmgfTBO-XJ6bFKpAOBpXPQ"}
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }]
+              },
+              "channelThumbnailSupportedRenderers": {
+                "channelThumbnailWithLinkRenderer": {
+                  "navigationEndpoint": {
+                    "browseEndpoint": {
+                      "browseId": "UCHmgfTBO-XJ6bFKpAOBpXPQ",
+                      "canonicalBaseUrl": "/@HartYT_"
+                    }
+                  }
+                }
+              }
+            }
+            """);
+
+        var summary = SearchHandler.ParseVideoSummary(doc.RootElement);
+
+        Assert.NotNull(summary);
+        Assert.Equal("Hart and Plan3", summary.Channel.Title);
+        Assert.Equal("UCHmgfTBO-XJ6bFKpAOBpXPQ", summary.Channel.Id.Value);
+        Assert.Equal("https://www.youtube.com/channel/UCHmgfTBO-XJ6bFKpAOBpXPQ", summary.Channel.Url.ToString());
+    }
+
+    [Fact]
+    public void GetTextExtractsAttributedTitleWhenTitleIsAbsent()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "attributedTitle": {
+                "content": "Hart and Plan3"
+              }
+            }
+            """);
+
+        Assert.Equal("Hart and Plan3", doc.RootElement.GetText());
+        Assert.Equal("Hart and Plan3", doc.RootElement.GetText("attributedTitle"));
+    }
+
+    [Fact]
     public void ParseVideoSummaryExtractsDurationFromThumbnailOverlayWhenLengthTextIsMissing()
     {
         using var doc = JsonDocument.Parse("""

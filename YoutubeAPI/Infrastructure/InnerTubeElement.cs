@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using YoutubeAPI.Models.Common;
 using YoutubeAPI.Models.Videos;
+using YoutubeAPI.Models.ValueTypes;
 
 namespace YoutubeAPI.Infrastructure;
 
@@ -31,6 +32,7 @@ internal static partial class InnerTubeElement
         "dynamicTextViewModel",
         "pageHeaderTitleViewModel",
         "textViewModel",
+        "attributedTitle",
         "text"
     ];
 
@@ -236,6 +238,60 @@ internal static partial class InnerTubeElement
                 var tracking = rcd.TryGetProperty("clickTrackingParams", out var tp) ? tp.GetString() : null;
                 return (tok4.GetString(), tracking);
             }
+        }
+
+        public string? FindBrowseId()
+        {
+            if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in element.EnumerateArray())
+                {
+                    var result = item.FindBrowseId();
+                    if (!string.IsNullOrWhiteSpace(result))
+                        return result;
+                }
+
+                return null;
+            }
+
+            if (element.ValueKind != JsonValueKind.Object)
+                return null;
+
+            if (element.TryGetProperty("browseEndpoint", out var browseEndpoint))
+            {
+                if (browseEndpoint.TryGetProperty("browseId", out var browseId) &&
+                    browseId.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(browseId.GetString()) &&
+                    ChannelId.TryParse(browseId.GetString(), out var channelId))
+                {
+                    return channelId.Value;
+                }
+
+                if (browseEndpoint.TryGetProperty("canonicalBaseUrl", out var canonicalBaseUrl) &&
+                    canonicalBaseUrl.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(canonicalBaseUrl.GetString()) &&
+                    ChannelId.TryParse(canonicalBaseUrl.GetString(), out var channelIdFromUrl))
+                {
+                    return channelIdFromUrl.Value;
+                }
+            }
+
+            if (element.TryGetProperty("channelId", out var directChannelId) &&
+                directChannelId.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(directChannelId.GetString()) &&
+                ChannelId.TryParse(directChannelId.GetString(), out var channelIdFromProp))
+            {
+                return channelIdFromProp.Value;
+            }
+
+            foreach (var property in element.EnumerateObject())
+            {
+                var result = property.Value.FindBrowseId();
+                if (!string.IsNullOrWhiteSpace(result))
+                    return result;
+            }
+
+            return null;
         }
     }
 

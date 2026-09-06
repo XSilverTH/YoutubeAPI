@@ -30,6 +30,12 @@ public sealed class YouTubeCookieAuthentication
         }
     }
 
+    /// <summary>
+    ///     Gets whether the cookie collection contains the required authentication cookies
+    ///     (<c>SAPISID</c> or <c>__Secure-3PAPISID</c>).
+    /// </summary>
+    public bool HasAuthenticationCookies => !string.IsNullOrEmpty(Sapisid) || !string.IsNullOrEmpty(Secure3Papisid);
+
     internal IReadOnlyList<Cookie> InternalCookies => _cookies;
 
     internal string? Sapisid =>

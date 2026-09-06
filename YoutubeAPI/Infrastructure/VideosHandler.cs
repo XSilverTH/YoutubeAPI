@@ -35,11 +35,16 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                     ? parsedChId
                     : nextData?.ChannelId ?? new ChannelId("UC0000000000000000000000");
 
+                var channelUrl = !string.IsNullOrWhiteSpace(explodeVideo.Author.ChannelUrl) &&
+                                 Uri.TryCreate(explodeVideo.Author.ChannelUrl, UriKind.Absolute, out var parsedUri)
+                    ? parsedUri
+                    : new Uri($"https://www.youtube.com/channel/{channelId}");
+
                 var channelSummary = new ChannelSummary(
                     channelId,
                     explodeVideo.Author.ChannelTitle,
                     nextData?.ChannelHandle,
-                    new Uri(explodeVideo.Author.ChannelUrl),
+                    channelUrl,
                     nextData?.ChannelThumbnails ?? [],
                     nextData?.IsVerified ?? false,
                     nextData?.SubscriberCount);
@@ -394,6 +399,8 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                     owner.TryGetProperty("videoOwnerRenderer", out var vor))
                 {
                     data.ChannelTitle = vor.GetText("title");
+                    if (string.IsNullOrWhiteSpace(data.ChannelTitle))
+                        data.ChannelTitle = vor.GetText("attributedTitle");
                     var subText = vor.GetText("subscriberCountText");
                     data.SubscriberCount = InnerTubeElement.ParseCount(subText);
                     data.ChannelThumbnails = vor.GetThumbnails("thumbnail");
@@ -403,9 +410,14 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                         nav.TryGetProperty("browseEndpoint", out var be) &&
                         be.TryGetProperty("browseId", out var bid) &&
                         ChannelId.TryParse(bid.GetString(), out var cid))
+                    {
                         data.ChannelId = cid;
+                    }
+                    else if (vor.FindBrowseId() is { } foundId && ChannelId.TryParse(foundId, out var parsedCid))
+                    {
+                        data.ChannelId = parsedCid;
+                    }
                 }
-
                 var desc = secondary.GetText("description");
                 if (string.IsNullOrEmpty(desc)) desc = secondary.GetText("attributedDescription");
                 data.Description = desc;
