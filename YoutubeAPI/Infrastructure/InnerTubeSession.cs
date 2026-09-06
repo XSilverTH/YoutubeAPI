@@ -435,7 +435,11 @@ internal sealed partial class InnerTubeSession : IDisposable
 
     private static bool IsExpired(Cookie cookie, DateTimeOffset now)
     {
-        if (cookie.Expires == DateTime.MinValue)
+        // YouTube validates SAPISID credentials server-side; browser-exported expiry metadata
+        // can be stale even while the credential remains usable.
+        if (cookie.Expires == DateTime.MinValue ||
+            cookie.Name.Equals("SAPISID", StringComparison.OrdinalIgnoreCase) ||
+            cookie.Name.Equals("__Secure-3PAPISID", StringComparison.OrdinalIgnoreCase))
             return false;
 
         return cookie.Expires < now.UtcDateTime;

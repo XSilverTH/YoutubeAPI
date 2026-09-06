@@ -65,6 +65,21 @@ public sealed class CookieAuthenticationTests
     }
 
     [Fact]
+    public void FromCookiesRetainsExpiredAuthenticationCookies()
+    {
+        var expiredCookie = new Cookie("SAPISID", "still-present-token", "/", ".youtube.com")
+        {
+            Expires = DateTime.UtcNow.AddMinutes(-1)
+        };
+
+        var auth = YouTubeCookieAuthentication.FromCookies([expiredCookie]);
+
+        Assert.True(auth.HasAuthenticationCookies);
+        Assert.Contains(auth.Cookies, cookie =>
+            cookie.Name == "SAPISID" && cookie.Value == "still-present-token");
+    }
+
+    [Fact]
     public void FromNetscapeWithHttpOnlyPrefixParsesAndSetsHttpOnlyFlag()
     {
         var futureExpiry = DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds();
@@ -123,6 +138,20 @@ public sealed class CookieAuthenticationTests
         Assert.Contains(auth.Cookies, c => c.Name == "SESSION_COOKIE");
         Assert.Contains(auth.Cookies, c => c.Name == "FUTURE_COOKIE");
         Assert.DoesNotContain(auth.Cookies, c => c.Name == "EXPIRED_COOKIE");
+    }
+
+    [Fact]
+    public void FromNetscapeRetainsExpiredAuthenticationCookies()
+    {
+        var pastExpiry = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds();
+        var netscapeContent =
+            $".youtube.com	TRUE	/	TRUE	{pastExpiry}	SAPISID	still-present-token\n";
+
+        var auth = YouTubeCookieAuthentication.FromNetscape(netscapeContent);
+
+        Assert.True(auth.HasAuthenticationCookies);
+        Assert.Contains(auth.Cookies, cookie =>
+            cookie.Name == "SAPISID" && cookie.Value == "still-present-token");
     }
 
     [Fact]

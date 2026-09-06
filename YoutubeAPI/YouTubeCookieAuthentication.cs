@@ -18,7 +18,9 @@ public sealed class YouTubeCookieAuthentication
     }
 
     /// <summary>
-    ///     Gets the collection of parsed, unexpired cookies as defensive clones.
+    ///     Gets the collection of parsed cookies as defensive clones. Authentication cookies are retained
+    ///     even when their exported browser expiration timestamp has passed; YouTube decides whether the
+    ///     credential itself is still valid.
     /// </summary>
     public IReadOnlyList<Cookie> Cookies
     {
@@ -71,7 +73,9 @@ public sealed class YouTubeCookieAuthentication
         return new YouTubeCookieAuthentication(
         [
             .. cookies.Where(c => c is not null &&
-                                  (c.Expires == DateTime.MinValue || c.Expires >= now)).Select(c => CloneCookie(c!))
+                                  (c.Expires == DateTime.MinValue ||
+                                   c.Expires >= now ||
+                                   IsAuthenticationCookie(c.Name))).Select(c => CloneCookie(c!))
         ]);
     }
 
@@ -103,6 +107,12 @@ public sealed class YouTubeCookieAuthentication
         using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
         var cookies = ParseNetscape(reader);
         return new YouTubeCookieAuthentication([.. cookies]);
+    }
+
+    private static bool IsAuthenticationCookie(string name)
+    {
+        return name.Equals("SAPISID", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("__Secure-3PAPISID", StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<Cookie> ParseNetscape(TextReader reader)
@@ -157,7 +167,8 @@ public sealed class YouTubeCookieAuthentication
             var name = parts[5];
             var value = parts[6];
 
-            if (expiryUnix > 0 && expiryUnix < nowUnix) continue;
+            // Auth tokens are opaque credentials; browser expiry metadata is not authoritative for them.
+            if (expiryUnix > 0 && expiryUnix < nowUnix && !IsAuthenticationCookie(name)) continue;
 
             try
             {
