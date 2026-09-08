@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using Xunit;
 using YoutubeAPI.Exceptions;
@@ -33,6 +34,46 @@ public class SessionTests
         await Assert.ThrowsAsync<AuthenticationRequiredException>(() =>
             client.Ratings.GetAsync(new VideoId("dQw4w9WgXcQ")));
     }
+
+    [Fact]
+    public async Task AccountProfileAcceptsRenamedAccountHeaderRenderer()
+    {
+        var authentication = YouTubeCookieAuthentication.FromNetscape(
+            ".youtube.com\tTRUE\t/\tTRUE\t2147483647\tSAPISID\ttest-sapisid\n");
+        var handler = new AccountMenuHandler();
+        using var httpClient = new HttpClient(handler);
+        using var session = new InnerTubeSession(
+            new YouTubeClientOptions { Authentication = authentication },
+            httpClient);
+
+        var profile = await new AccountHandler(session).GetProfileAsync(CancellationToken.None);
+
+        Assert.Equal("Test User", profile.DisplayName);
+        Assert.Equal("@testuser", profile.Handle);
+    }
+
+    private sealed class AccountMenuHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Post)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """{"actions":[{"openPopupAction":{"popup":{"multiPageMenuRenderer":{"header":{"accountHeaderRenderer":{"accountName":{"simpleText":"Test User"},"channelHandle":{"simpleText":"@testuser"}}}}}}}]}""",
+                        Encoding.UTF8,
+                        "application/json")
+                });
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("<html></html>", Encoding.UTF8, "text/html")
+            });
+        }
+    }
+
     [Fact]
     public async Task SearchRequestWritesJsonPayload()
     {

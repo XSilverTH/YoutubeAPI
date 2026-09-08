@@ -207,9 +207,11 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
             CancellationToken.None).ConfigureAwait(false);
 
         var profile = ParseAccountMenuProfile(doc.RootElement);
-        return profile ??
-               throw new YouTubeProtocolException(
-                   "Failed to load user profile: unexpected account_menu response format.");
+        if (profile is not null)
+            return profile;
+
+        throw new YouTubeProtocolException(
+            $"Failed to load user profile: unexpected account_menu response format ({DescribeResponseShape(doc.RootElement)}).");
     }
 
     private static SubscriptionCommand? FindSubscriptionCommand(JsonElement element, bool isSubscribe)
@@ -372,10 +374,13 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
     {
         if (!TryFindActiveAccountHeaderRenderer(root, out var aahr)) return null;
         var displayName = aahr.GetText("accountName");
+        if (string.IsNullOrEmpty(displayName)) displayName = aahr.GetText("displayName");
+        if (string.IsNullOrEmpty(displayName)) displayName = aahr.GetText("channelName");
         if (string.IsNullOrEmpty(displayName)) displayName = aahr.GetText("title");
 
         var handle = aahr.GetText("channelHandle");
         if (string.IsNullOrEmpty(handle)) handle = aahr.GetText("handleText");
+        if (string.IsNullOrEmpty(handle)) handle = aahr.GetText("handle");
         if (string.IsNullOrEmpty(handle)) handle = null;
 
         var avatars = aahr.GetThumbnails("accountPhoto");
@@ -406,26 +411,60 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
     {
         switch (element.ValueKind)
         {
-            case JsonValueKind.Object when element.TryGetProperty("activeAccountHeaderRenderer", out renderer):
-                return true;
             case JsonValueKind.Object:
-            {
+                if (element.TryGetProperty("activeAccountHeaderRenderer", out renderer) ||
+                    element.TryGetProperty("accountHeaderRenderer", out renderer) ||
+                    element.TryGetProperty("accountInfoRenderer", out renderer))
+                    return true;
+
+                // YouTube occasionally moves the account header fields without
+                // preserving the renderer name. Accept the recognizable header shape
+                // while continuing to recurse through the response.
+                if (element.TryGetProperty("accountName", out _) ||
+                    element.TryGetProperty("displayName", out _) ||
+                    element.TryGetProperty("channelName", out _) ||
+                    element.TryGetProperty("accountPhoto", out _) ||
+                    element.TryGetProperty("avatar", out _))
+                {
+                    renderer = element;
+                    return true;
+                }
+
                 foreach (var prop in element.EnumerateObject())
                     if (TryFindActiveAccountHeaderRenderer(prop.Value, out renderer))
                         return true;
                 break;
-            }
             case JsonValueKind.Array:
-            {
                 foreach (var item in element.EnumerateArray())
                     if (TryFindActiveAccountHeaderRenderer(item, out renderer))
                         return true;
                 break;
-            }
         }
 
         renderer = default;
         return false;
+    }
+
+    private static string DescribeResponseShape(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return $"root={root.ValueKind}";
+
+        var topLevel = string.Join(",",
+            root.EnumerateObject().Select(property => property.Name).Take(12));
+        var actionShape = string.Empty;
+        if (root.TryGetProperty("actions", out var actions) && actions.ValueKind == JsonValueKind.Array &&
+            actions.GetArrayLength() > 0)
+        {
+            var firstAction = actions[0];
+            if (firstAction.ValueKind == JsonValueKind.Object)
+                actionShape = string.Join(",",
+                    firstAction.EnumerateObject().Select(property => property.Name).Take(12));
+        }
+
+        return string.IsNullOrEmpty(actionShape)
+            ? $"topLevel=[{topLevel}]"
+            : $"topLevel=[{topLevel}],firstAction=[{actionShape}]";
     }
 
     private sealed record SubscriptionCommand(
