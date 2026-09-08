@@ -41,10 +41,28 @@ public sealed class YouTubeCookieAuthentication
     internal IReadOnlyList<Cookie> InternalCookies => _cookies;
 
     internal string? Sapisid =>
-        _cookies.FirstOrDefault(c => c.Name.Equals("SAPISID", StringComparison.OrdinalIgnoreCase))?.Value;
+        FindAuthenticationCookie("SAPISID")?.Value;
 
-    internal string? Secure3Papisid => _cookies
-        .FirstOrDefault(c => c.Name.Equals("__Secure-3PAPISID", StringComparison.OrdinalIgnoreCase))?.Value;
+    internal string? Secure3Papisid =>
+        FindAuthenticationCookie("__Secure-3PAPISID")?.Value;
+
+    private Cookie? FindAuthenticationCookie(string name)
+    {
+        return _cookies.FirstOrDefault(c =>
+            c.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrEmpty(c.Value) &&
+            IsYouTubeDomain(c.Domain));
+    }
+
+    private static bool IsYouTubeDomain(string? domain)
+    {
+        if (string.IsNullOrWhiteSpace(domain))
+            return false;
+
+        var normalized = domain.TrimStart('.');
+        return normalized.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+               normalized.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase);
+    }
 
     internal string? GetSapisidOrSecure()
     {

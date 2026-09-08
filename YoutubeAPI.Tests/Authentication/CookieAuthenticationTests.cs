@@ -220,6 +220,37 @@ public sealed class CookieAuthenticationTests
     }
 
     [Fact]
+    public void SapisidSelectionPrefersYouTubeCookieOverNonYouTubeCookie()
+    {
+        var futureExpiry = DateTimeOffset.UtcNow.AddDays(10).ToUnixTimeSeconds();
+        var netscapeContent = $"""
+                               .google.com	TRUE	/	TRUE	{futureExpiry}	SAPISID	google-token
+                               .youtube.com	TRUE	/	TRUE	{futureExpiry}	SAPISID	youtube-token
+                               .youtube.com	TRUE	/	TRUE	{futureExpiry}	__Secure-3PAPISID	secure-token
+                               """;
+        var auth = YouTubeCookieAuthentication.FromNetscape(netscapeContent);
+
+        Assert.Equal("youtube-token", auth.Sapisid);
+        Assert.Equal("secure-token", auth.Secure3Papisid);
+        Assert.Equal("youtube-token", auth.GetRequiredSapisid());
+        Assert.True(auth.HasAuthenticationCookies);
+    }
+
+    [Fact]
+    public void SapisidSelectionIgnoresEmptyYouTubeCookie()
+    {
+        var auth = YouTubeCookieAuthentication.FromCookies(
+        [
+            new Cookie("SAPISID", string.Empty, "/", ".youtube.com"),
+            new Cookie("SAPISID", "valid-token", "/", ".youtube.com")
+        ]);
+
+        Assert.Equal("valid-token", auth.Sapisid);
+        Assert.Equal("valid-token", auth.GetRequiredSapisid());
+        Assert.True(auth.HasAuthenticationCookies);
+    }
+
+    [Fact]
     public void SapisidPropertiesExtractsExpectedTokens()
     {
         var futureExpiry = DateTimeOffset.UtcNow.AddDays(10).ToUnixTimeSeconds();
