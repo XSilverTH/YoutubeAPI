@@ -546,8 +546,9 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
         CancellationToken cancellationToken)
     {
         var list = new List<TranscriptCue>();
+        Exception? lastException = null;
 
-        // Try JSON3 format first
+        // Try JSON3 format first.
         var jsonUrl = baseUrl.Contains('?') ? $"{baseUrl}&fmt=json3" : $"{baseUrl}?fmt=json3";
         try
         {
@@ -571,10 +572,9 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
 
                             var text = sb.ToString();
                             if (string.IsNullOrWhiteSpace(text)) continue;
-                            var startMs =
-                                evt.TryGetProperty("tStartMs", out var st) && st.TryGetInt64(out var stVal)
-                                    ? stVal
-                                    : 0;
+                            var startMs = evt.TryGetProperty("tStartMs", out var st) && st.TryGetInt64(out var stVal)
+                                ? stVal
+                                : 0;
                             var durMs = evt.TryGetProperty("dDurationMs", out var dur) &&
                                         dur.TryGetInt64(out var durVal)
                                 ? durVal
@@ -583,21 +583,24 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                                 TimeSpan.FromMilliseconds(durMs)));
                         }
 
-                    if (list.Count > 0)
-                        return list;
+                    return list;
                 }
+            }
+            else
+            {
+                lastException = new HttpRequestException($"Transcript request returned HTTP {(int)res.StatusCode}.");
             }
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
-            // Fall back to XML
+            lastException = ex;
         }
 
-        // XML fallback
+        // XML fallback.
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, baseUrl);
@@ -610,28 +613,29 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                 {
                     var text = WebUtility.HtmlDecode(el.Value);
                     var startSec = double.TryParse(el.Attribute("start")?.Value, NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out var s)
-                        ? s
-                        : 0;
+                        CultureInfo.InvariantCulture, out var s) ? s : 0;
                     var durSec = double.TryParse(el.Attribute("dur")?.Value, NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out var d)
-                        ? d
-                        : 0;
+                        CultureInfo.InvariantCulture, out var d) ? d : 0;
                     list.Add(new TranscriptCue(text.Trim(), TimeSpan.FromSeconds(startSec),
                         TimeSpan.FromSeconds(durSec)));
                 }
+
+                return list;
             }
+
+            lastException = new HttpRequestException($"Transcript request returned HTTP {(int)res.StatusCode}.");
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore XML parse errors
+            lastException = ex;
         }
 
-        return list;
+        throw new YouTubeRequestException(
+            "Failed to retrieve transcript captions.", "transcript.captions", null, lastException);
     }
 
     private sealed class NextVideoData

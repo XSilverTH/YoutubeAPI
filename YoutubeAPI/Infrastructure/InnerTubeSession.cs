@@ -384,6 +384,20 @@ internal sealed partial class InnerTubeSession : IDisposable
 
         using var response = await HttpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.TooManyRequests:
+            {
+                var retryAfter = response.Headers.RetryAfter?.Delta;
+                throw new RateLimitedException(
+                    $"Channel resolution was rate limited (HTTP 429) for '{reference.Value}'.", retryAfter);
+            }
+            case >= HttpStatusCode.InternalServerError:
+                throw new YouTubeRequestException(
+                    $"Channel resolution failed temporarily with status {(int)response.StatusCode} ({response.StatusCode}).",
+                    "channel.resolve", response.StatusCode);
+        }
+
         if (!response.IsSuccessStatusCode)
             throw new ResourceNotFoundException($"Channel '{reference.Value}' could not be resolved.");
 

@@ -90,6 +90,52 @@ public class SessionTests
         Assert.Equal("WEB", payload.RootElement.GetProperty("context").GetProperty("client").GetProperty("clientName").GetString());
     }
 
+    [Fact]
+    public async Task ChannelHandleResolutionRateLimitIsNotReportedAsNotFound()
+    {
+        using var httpClient = new HttpClient(new StatusHandler(HttpStatusCode.TooManyRequests));
+        using var session = new InnerTubeSession(new YouTubeClientOptions(), httpClient);
+
+        await Assert.ThrowsAsync<RateLimitedException>(() =>
+            session.ResolveChannelIdAsync(ChannelReference.FromHandle("creator"), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UnavailableChannelSortDoesNotReturnNewestVideos()
+    {
+        using var httpClient = new HttpClient(new StatusHandler(HttpStatusCode.OK, "{}"));
+        using var session = new InnerTubeSession(new YouTubeClientOptions(), httpClient);
+
+        await Assert.ThrowsAsync<ResourceUnavailableException>(() =>
+            new ChannelsHandler(session).GetVideosPageAsync(
+                ChannelReference.FromId(new ChannelId("UC1234567890123456789012")),
+                Models.Enums.ChannelVideoSort.Popular,
+                CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TranscriptCaptionRetrievalFailureIsNotReportedAsEmptyTranscript()
+    {
+        using var httpClient = new HttpClient(new StatusHandler(HttpStatusCode.ServiceUnavailable, "{}"));
+        using var session = new InnerTubeSession(new YouTubeClientOptions(), httpClient);
+
+        await Assert.ThrowsAsync<YouTubeRequestException>(() =>
+            new VideosHandler(session).GetTranscriptAsync(
+                new VideoId("dQw4w9WgXcQ"), new TranscriptTrackId("en"), CancellationToken.None));
+    }
+
+    private sealed class StatusHandler(HttpStatusCode statusCode, string content = "") : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent(content, Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
     private sealed class CapturingHandler : HttpMessageHandler
     {
         public string? SearchBody { get; private set; }

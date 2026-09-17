@@ -53,7 +53,9 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         {
             var sortTarget = sort == ChannelVideoSort.Popular ? "Popular" : "Oldest";
             var sortContinuationToken = FindSortContinuationToken(root, sortTarget);
-            if (string.IsNullOrEmpty(sortContinuationToken)) return ParseChannelVideosResponse(root, browseId, sort);
+            if (string.IsNullOrEmpty(sortContinuationToken))
+                throw new ResourceUnavailableException(
+                    $"Channel '{channel.Value}' does not support the '{sort}' video sort.");
             using var sortedDoc = await session.PostInnerTubeAsync(
                 "browse",
                 writer => writer.WriteString("continuation", sortContinuationToken),
