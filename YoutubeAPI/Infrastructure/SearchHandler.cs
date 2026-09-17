@@ -54,7 +54,7 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
         return ParseSearchResponse(doc.RootElement, continuation.Query, continuation.Kind);
     }
 
-    private static Page<SearchResult, SearchContinuation> ParseSearchResponse(JsonElement root, string? query,
+    internal static Page<SearchResult, SearchContinuation> ParseSearchResponse(JsonElement root, string? query,
         SearchKind kind)
     {
         var items = new List<SearchResult>();
@@ -89,10 +89,19 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
             !sectionList.TryGetProperty("contents", out var sections) ||
             sections.ValueKind != JsonValueKind.Array) return;
         foreach (var section in sections.EnumerateArray())
+        {
+            var (tok, trk) = section.ExtractContinuation();
+            if (!string.IsNullOrEmpty(tok))
+            {
+                continuationToken = tok;
+                trackingParams = trk;
+            }
+
             if (section.TryGetProperty("itemSectionRenderer", out var itemSection) &&
                 itemSection.TryGetProperty("contents", out var sectionContents) &&
                 sectionContents.ValueKind == JsonValueKind.Array)
                 ParseItemList(sectionContents, items, ref continuationToken, ref trackingParams);
+        }
     }
 
     private static void ParseItemList(JsonElement itemList, List<SearchResult> items, ref string? continuationToken,

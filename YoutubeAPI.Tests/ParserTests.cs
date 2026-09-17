@@ -120,6 +120,52 @@ public class ParserTests
 
 
     [Fact]
+    public void ParseSearchResponseExtractsSiblingContinuationOnFirstPage()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "contents": {
+                "twoColumnSearchResultsRenderer": {
+                  "primaryContents": {
+                    "sectionListRenderer": {
+                      "contents": [
+                        {
+                          "itemSectionRenderer": {
+                            "contents": []
+                          }
+                        },
+                        {
+                          "continuationItemRenderer": {
+                            "continuationEndpoint": {
+                              "continuationCommand": {
+                                "token": "next-page-token"
+                              }
+                            },
+                            "trackingParams": "tracking-token"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+            """);
+
+        var page = SearchHandler.ParseSearchResponse(
+            doc.RootElement,
+            "test query",
+            YoutubeAPI.Models.Enums.SearchKind.Video);
+
+        Assert.Empty(page.Items);
+        Assert.NotNull(page.Next);
+        Assert.Equal("next-page-token", page.Next.Token);
+        Assert.Equal("test query", page.Next.Query);
+        Assert.Equal(YoutubeAPI.Models.Enums.SearchKind.Video, page.Next.Kind);
+        Assert.Equal("tracking-token", page.Next.TrackingParams);
+    }
+
+    [Fact]
     public void ParseVideoSummaryUsesNextBylineWhenOwnerTextHasNoText()
     {
         using var doc = JsonDocument.Parse("""
