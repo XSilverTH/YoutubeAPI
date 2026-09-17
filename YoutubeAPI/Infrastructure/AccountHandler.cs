@@ -24,10 +24,24 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
             profileTask = _profileTask;
         }
 
-        var profile = await profileTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-        _cachedProfile = profile;
-        return profile;
-    }
+        try
+        {
+            var profile = await profileTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            _cachedProfile = profile;
+            return profile;
+        }
+        catch
+        {
+            lock (_profileSync)
+            {
+                if (ReferenceEquals(_profileTask, profileTask) &&
+                    (profileTask.IsFaulted || profileTask.IsCanceled))
+                    _profileTask = null;
+            }
+
+            throw;
+        }
+        }
 
     public async Task SubscribeAsync(ChannelId channelId, CancellationToken cancellationToken)
     {

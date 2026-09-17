@@ -29,7 +29,8 @@ internal sealed class SuggestionsHandler(InnerTubeSession session) : IYouTubeSug
         }
         catch (Exception ex)
         {
-            throw new YouTubeRequestException($"Failed to fetch suggestions for '{query}': {ex.Message}", "suggestions",
+            throw new YouTubeRequestException(
+                $"Failed to fetch suggestions for '{query}': {InnerTubeSession.Sanitize(ex.Message)}", "suggestions",
                 null, ex);
         }
 

@@ -94,41 +94,34 @@ internal sealed partial class InnerTubeSession : IDisposable
 
     private async Task<BootstrapInfo> FetchBootstrapInfoAsync(CancellationToken cancellationToken)
     {
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"{BaseYouTubeUrl}/?hl={Options.Language}");
-            request.Headers.UserAgent.ParseAdd(DefaultUserAgent);
-            request.Headers.Add("Cookie", BuildCookieHeader(request.RequestUri!));
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{BaseYouTubeUrl}/?hl={Options.Language}");
+        request.Headers.UserAgent.ParseAdd(DefaultUserAgent);
+        request.Headers.Add("Cookie", BuildCookieHeader(request.RequestUri!));
 
-            using var response = await HttpClient
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-                return new BootstrapInfo(DefaultApiKey, DefaultClientVersion, Options.VisitorData);
-
-            var html = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            var apiKeyMatch = ApiKeyRegex().Match(html);
-            var apiKey = apiKeyMatch.Success
-                ? apiKeyMatch.Groups[1].Success ? apiKeyMatch.Groups[1].Value : apiKeyMatch.Groups[2].Value
-                : DefaultApiKey;
-
-            var versionMatch = ClientVersionRegex().Match(html);
-            var clientVersion = versionMatch.Success
-                ? versionMatch.Groups[1].Success ? versionMatch.Groups[1].Value : versionMatch.Groups[2].Value
-                : DefaultClientVersion;
-
-            var visitorMatch = VisitorDataRegex().Match(html);
-            var visitorData = Options.VisitorData;
-            if (string.IsNullOrEmpty(visitorData) && visitorMatch.Success)
-                visitorData = visitorMatch.Groups[1].Success
-                    ? visitorMatch.Groups[1].Value
-                    : visitorMatch.Groups[2].Value;
-
-            return new BootstrapInfo(apiKey, clientVersion, visitorData);
-        }
-        catch
-        {
+        using var response = await HttpClient
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
             return new BootstrapInfo(DefaultApiKey, DefaultClientVersion, Options.VisitorData);
-        }
+
+        var html = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var apiKeyMatch = ApiKeyRegex().Match(html);
+        var apiKey = apiKeyMatch.Success
+            ? apiKeyMatch.Groups[1].Success ? apiKeyMatch.Groups[1].Value : apiKeyMatch.Groups[2].Value
+            : DefaultApiKey;
+
+        var versionMatch = ClientVersionRegex().Match(html);
+        var clientVersion = versionMatch.Success
+            ? versionMatch.Groups[1].Success ? versionMatch.Groups[1].Value : versionMatch.Groups[2].Value
+            : DefaultClientVersion;
+
+        var visitorMatch = VisitorDataRegex().Match(html);
+        var visitorData = Options.VisitorData;
+        if (string.IsNullOrEmpty(visitorData) && visitorMatch.Success)
+            visitorData = visitorMatch.Groups[1].Success
+                ? visitorMatch.Groups[1].Value
+                : visitorMatch.Groups[2].Value;
+
+        return new BootstrapInfo(apiKey, clientVersion, visitorData);
     }
 
     public void EnsureAuthenticated()
@@ -233,10 +226,18 @@ internal sealed partial class InnerTubeSession : IDisposable
                     $"Failed to parse JSON response from YouTube endpoint '{endpoint}': {Sanitize(ex.Message)}", ex);
             }
 
-            CheckResponseAlerts(document.RootElement, endpoint);
-            return document;
+            try
+            {
+                CheckResponseAlerts(document.RootElement, endpoint);
+                return document;
+            }
+            catch
+            {
+                document.Dispose();
+                throw;
+            }
+            }
         }
-    }
 
     [SuppressMessage("Security", "CA5350:Do Not Use Weak Cryptographic Algorithms",
         Justification = "Required by YouTube SAPISIDHASH protocol")]
@@ -353,15 +354,21 @@ internal sealed partial class InnerTubeSession : IDisposable
         if (string.IsNullOrEmpty(message))
             return string.Empty;
 
-        return message
-            .Replace("SAPISIDHASH ", "SAPISIDHASH [REDACTED] ", StringComparison.OrdinalIgnoreCase)
-            .Replace("Authorization:", "Authorization: [REDACTED]", StringComparison.OrdinalIgnoreCase)
-            .Replace("Cookie:", "Cookie: [REDACTED]", StringComparison.OrdinalIgnoreCase)
-            .Replace("key=", "key=[REDACTED]", StringComparison.OrdinalIgnoreCase)
-            .Replace("continuation=", "continuation=[REDACTED]", StringComparison.OrdinalIgnoreCase)
-            .Replace("params=", "params=[REDACTED]", StringComparison.OrdinalIgnoreCase)
-            .Replace("poToken=", "poToken=[REDACTED]", StringComparison.OrdinalIgnoreCase);
+        message = SapisidHashRegex().Replace(message, "SAPISIDHASH [REDACTED]");
+        message = HeaderSecretRegex().Replace(message, "$1 [REDACTED]");
+        message = QuerySecretRegex().Replace(message, "$1=[REDACTED]");
+        return message;
     }
+
+    [GeneratedRegex(@"SAPISIDHASH\s+\S+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SapisidHashRegex();
+    [GeneratedRegex(@"(Authorization:|Cookie:)\s*[^\r\n]+",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex HeaderSecretRegex();
+
+    [GeneratedRegex(@"(key|continuation|params|poToken)=[^&\s]+",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex QuerySecretRegex();
 
     [GeneratedRegex("\"(?:channelId|externalId)\"\\s*:\\s*\"(?<id>UC[A-Za-z0-9_-]{22})\"",
         RegexOptions.CultureInvariant)]
