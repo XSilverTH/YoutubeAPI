@@ -143,6 +143,7 @@ internal sealed partial class InnerTubeSession : IDisposable
     public async Task<JsonDocument> PostInnerTubeAsync(
         string endpoint,
         Action<Utf8JsonWriter> writePayload,
+        Action<string>? captureResponseDiagnostics = null,
         CancellationToken cancellationToken = default)
     {
         var bootstrap = await GetBootstrapInfoAsync(cancellationToken).ConfigureAwait(false);
@@ -167,6 +168,9 @@ internal sealed partial class InnerTubeSession : IDisposable
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
 
         ApplyHeaders(request, bootstrap);
+        var requestDiagnostics = captureResponseDiagnostics == null
+            ? null
+            : CaptureOutgoingDiagnostics(request, bootstrap);
 
         HttpResponseMessage response;
         try
@@ -186,6 +190,9 @@ internal sealed partial class InnerTubeSession : IDisposable
 
         using (response)
         {
+            if (captureResponseDiagnostics != null && requestDiagnostics != null)
+                captureResponseDiagnostics(CompleteResponseDiagnostics(requestDiagnostics, response));
+
             switch (response.StatusCode)
             {
                 case HttpStatusCode.TooManyRequests:
@@ -236,8 +243,8 @@ internal sealed partial class InnerTubeSession : IDisposable
                 document.Dispose();
                 throw;
             }
-            }
         }
+    }
 
     [SuppressMessage("Security", "CA5350:Do Not Use Weak Cryptographic Algorithms",
         Justification = "Required by YouTube SAPISIDHASH protocol")]
@@ -452,6 +459,103 @@ internal sealed partial class InnerTubeSession : IDisposable
         builder.Append("SOCS=CAI");
 
         return builder.ToString();
+    }
+
+    private string CaptureOutgoingDiagnostics(HttpRequestMessage request, BootstrapInfo bootstrap)
+    {
+        var requestUri = request.RequestUri!;
+        var cookies = Options.Authentication?.InternalCookies;
+        var now = Options.TimeProvider.GetUtcNow();
+        var expired = 0;
+        var excluded = 0;
+        if (cookies != null)
+        {
+            foreach (Cookie cookie in cookies)
+            {
+                if (IsExpired(cookie, now))
+                    expired++;
+                else if (!SecureMatches(requestUri, cookie) ||
+                         !DomainMatches(requestUri.Host, cookie.Domain) ||
+                         !PathMatches(requestUri.AbsolutePath, cookie.Path))
+                    excluded++;
+            }
+        }
+
+        var cookieNames = new HashSet<string>(StringComparer.Ordinal);
+        var unknownCookieCount = 0;
+        if (request.Headers.TryGetValues("Cookie", out var cookieHeaders))
+        {
+            foreach (var header in cookieHeaders)
+            {
+                var remaining = header.AsSpan();
+                while (!remaining.IsEmpty)
+                {
+                    var separator = remaining.IndexOf(';');
+                    var pair = separator < 0 ? remaining : remaining[..separator];
+                    var equals = pair.IndexOf('=');
+                    if (equals > 0)
+                    {
+                        var name = pair[..equals].Trim();
+                        if (IsDiagnosticCookieName(name))
+                            cookieNames.Add(name.ToString());
+                        else
+                            unknownCookieCount++;
+                    }
+
+                    if (separator < 0) break;
+                    remaining = remaining[(separator + 1)..];
+                }
+            }
+        }
+
+        var authUser = request.Headers.TryGetValues("X-Goog-AuthUser", out var authUsers)
+            ? authUsers.FirstOrDefault()
+            : null;
+        if (authUser == null || !int.TryParse(authUser, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+            authUser = "absent";
+
+        var requestTime = "absent";
+        if (request.Headers.TryGetValues("Authorization", out var authorizations))
+        {
+            var authorization = authorizations.FirstOrDefault();
+            var separator = authorization?.IndexOf(' ') ?? -1;
+            var underscore = authorization?.IndexOf('_', separator + 1) ?? -1;
+            if (separator >= 0 && underscore > separator &&
+                long.TryParse(authorization.AsSpan(separator + 1, underscore - separator - 1),
+                    NumberStyles.None, CultureInfo.InvariantCulture, out var unixSeconds))
+                requestTime = DateTimeOffset.FromUnixTimeSeconds(unixSeconds).UtcDateTime
+                    .ToString("O", CultureInfo.InvariantCulture);
+        }
+
+        var safeVersion = Regex.IsMatch(bootstrap.ClientVersion, @"^[A-Za-z0-9._-]{1,64}$",
+            RegexOptions.CultureInvariant) ? bootstrap.ClientVersion : "invalid";
+        var names = string.Join(",", cookieNames.OrderBy(name => name, StringComparer.Ordinal));
+        return $"clientVersion={safeVersion},requestTimeUtc={requestTime},authUser={authUser}," +
+               $"pageIdPresent={request.Headers.Contains("X-Goog-PageId").ToString().ToLowerInvariant()}," +
+               $"authorizationPresent={request.Headers.Contains("Authorization").ToString().ToLowerInvariant()}," +
+               $"cookieNames=[{names}],unknownCookieCount={unknownCookieCount},parsedCookieCount={cookies?.Count ?? 0}," +
+               $"expiredCookieCount={expired},excludedCookieCount={excluded}";
+    }
+
+    private static bool IsDiagnosticCookieName(ReadOnlySpan<char> name)
+    {
+        ReadOnlySpan<string> allowed =
+        [
+            "SAPISID", "__Secure-3PAPISID", "APISID", "__Secure-1PAPISID", "SID", "HSID", "SSID",
+            "LOGIN_INFO", "__Secure-1PSID", "__Secure-3PSID", "__Secure-1PSIDTS", "__Secure-3PSIDTS",
+            "SIDCC", "__Secure-1PSIDCC", "__Secure-3PSIDCC"
+        ];
+        foreach (var candidate in allowed)
+            if (name.Equals(candidate, StringComparison.Ordinal))
+                return true;
+        return false;
+    }
+
+    private static string CompleteResponseDiagnostics(string requestDiagnostics, HttpResponseMessage response)
+    {
+        var isYouTubeHost = response.RequestMessage?.RequestUri?.Host.Equals(
+            "www.youtube.com", StringComparison.OrdinalIgnoreCase) == true;
+        return $"{requestDiagnostics},responseStatus={(int)response.StatusCode},finalResponseHostIsYouTube={isYouTubeHost.ToString().ToLowerInvariant()}";
     }
 
     private static bool IsExpired(Cookie cookie, DateTimeOffset now)

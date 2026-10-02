@@ -43,6 +43,109 @@ public class SessionTests
     }
 
     [Fact]
+    public async Task AccountMenuFailureDiagnosticsDescribeStructureWithoutPayloadValues()
+    {
+        const string secret = "diagnostic-secret-sentinel";
+        var authentication = YouTubeCookieAuthentication.FromNetscape(
+            $".youtube.com\tTRUE\t/\tTRUE\t2147483647\tSAPISID\t{secret}\n");
+        using var httpClient = new HttpClient(new SignedOutAccountMenuHandler(secret));
+        using var session = new InnerTubeSession(
+            new YouTubeClientOptions { Authentication = authentication, AuthUser = 2, PageId = "private-page" },
+            httpClient);
+
+        var exception = await Assert.ThrowsAsync<YouTubeProtocolException>(() =>
+            new AccountHandler(session).GetProfileAsync(CancellationToken.None));
+        var message = exception.Message;
+
+        Assert.Contains("popup", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("signInEndpointPresent=true", message, StringComparison.Ordinal);
+        Assert.Contains("unknownPopupRenderer", message, StringComparison.Ordinal);
+        Assert.Contains("responseContext.mainAppWebResponseContext.loggedOut=true", message, StringComparison.Ordinal);
+        Assert.Contains("responseStatus=200", message, StringComparison.Ordinal);
+        Assert.Contains("authUser=2", message, StringComparison.Ordinal);
+        Assert.Contains("pageIdPresent=true", message, StringComparison.Ordinal);
+        Assert.Contains("authorizationPresent=true", message, StringComparison.Ordinal);
+        Assert.Contains("SAPISID", message, StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, message, StringComparison.Ordinal);
+        Assert.DoesNotContain("private-page", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("malicious", message, StringComparison.Ordinal);
+    }
+
+    private sealed class SignedOutAccountMenuHandler(string secret) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.Method != HttpMethod.Post)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("<html></html>", Encoding.UTF8, "text/html")
+                });
+
+            const string hostileName = "malicious\nAuthorization: bearer-secret";
+            var content = JsonSerializer.Serialize(new
+            {
+                actions = new object[]
+                {
+                    new Dictionary<string, object> { ["unrecognizedAction"] = new Dictionary<string, string> { [hostileName] = secret } },
+                    new
+                    {
+                        openPopupAction = new
+                        {
+                            popup = new
+                            {
+                                unknownPopupRenderer = new { unexpectedValue = secret },
+                                multiPageMenuRenderer = new
+                                {
+                                    sections = new[]
+                                    {
+                                        new
+                                        {
+                                            multiPageMenuSectionRenderer = new
+                                            {
+                                                items = new[]
+                                                {
+                                                    new
+                                                    {
+                                                        compactLinkRenderer = new
+                                                        {
+                                                            navigationEndpoint = new
+                                                            {
+                                                                signInEndpoint = new
+                                                                {
+                                                                    urlEndpoint = new
+                                                                    {
+                                                                        url = $"https://private.invalid/?token={secret}"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                header = new
+                                {
+                                    unknownHeaderRenderer = new { text = new { simpleText = secret } }
+                                }
+                            }
+                        }
+                    }
+                },
+                responseContext = new { mainAppWebResponseContext = new { loggedOut = true } },
+                privateScalar = secret
+            });
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(content, Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
+    [Fact]
     public void UnauthenticatedSessionThrowsOnEnsureAuthenticated()
     {
         using var session = new InnerTubeSession(new YouTubeClientOptions());

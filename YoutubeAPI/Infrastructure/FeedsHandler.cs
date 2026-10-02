@@ -15,7 +15,7 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("browseId", "FEwhat_to_watch"); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseHomeFeedResponse(doc.RootElement);
     }
@@ -29,7 +29,7 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseHomeFeedResponse(doc.RootElement);
     }
@@ -43,7 +43,7 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("browseId", "FEsubscriptions"); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseSubscriptionsResponse(doc.RootElement, profileId);
     }
@@ -58,7 +58,7 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseSubscriptionsResponse(doc.RootElement, continuation.ProfileId);
     }
@@ -72,7 +72,7 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("browseId", "FEchannels"); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseSubscribedChannelsResponse(doc.RootElement, profileId);
     }
@@ -87,7 +87,7 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseSubscribedChannelsResponse(doc.RootElement, continuation.ProfileId);
     }
@@ -100,7 +100,7 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("browseId", "FEhistory"); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseHistoryResponse(doc.RootElement, profileId);
     }
@@ -115,7 +115,7 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseHistoryResponse(doc.RootElement, continuation.ProfileId);
     }

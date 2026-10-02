@@ -22,7 +22,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("browseId", browseId); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var root = doc.RootElement;
         var summary = ParsePlaylistDetailsHeader(root, playlistId);
@@ -45,7 +45,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("browseId", browseId); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParsePlaylistItemsResponse(doc.RootElement, playlistId.Value);
     }
@@ -59,7 +59,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParsePlaylistItemsResponse(doc.RootElement, continuation.PlaylistId);
     }
@@ -74,7 +74,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => writer.WriteString("browseId", "FEplaylist_aggregation"),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseOwnedPlaylistsResponse(doc.RootElement, profileId);
     }
@@ -94,7 +94,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => writer.WriteString("continuation", continuation.Token),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseOwnedPlaylistsResponse(doc.RootElement, profileId);
     }
@@ -122,7 +122,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
                 if (!string.IsNullOrEmpty(request.Description)) writer.WriteString("description", request.Description);
                 writer.WriteString("privacyStatus", privacyStr);
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var root = doc.RootElement;
         var newPlaylistId = root.TryGetProperty("playlistId", out var pidEl) ? pidEl.GetString() : null;
@@ -156,7 +156,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
         using var doc = await session.PostInnerTubeAsync(
             "playlist/delete",
             writer => { writer.WriteString("playlistId", playlistId.Value); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         ValidateDeletePlaylistAcknowledgement(doc.RootElement, playlistId.Value);
     }
@@ -177,7 +177,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
                 writer.WriteEndObject();
                 writer.WriteEndArray();
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         ValidateEditPlaylistAcknowledgement(doc.RootElement, "playlist.add", playlistId.Value);
     }
@@ -198,7 +198,7 @@ internal sealed class PlaylistsHandler(InnerTubeSession session) : IYouTubePlayl
                 writer.WriteEndObject();
                 writer.WriteEndArray();
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         ValidateEditPlaylistAcknowledgement(doc.RootElement, "playlist.remove", playlistId.Value);
     }

@@ -20,7 +20,7 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => writer.WriteString("browseId", resolvedChannelId.Value),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var root = doc.RootElement;
         var channelSummary = ParseChannelHeader(root, channel);
@@ -46,7 +46,7 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
                 writer.WriteString("browseId", browseId);
                 writer.WriteString("params", "EgZ2aWRlb3PyBgQKAjoA");
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var root = doc.RootElement;
         if (sort == ChannelVideoSort.Newest) return ParseChannelVideosResponse(root, browseId, sort);
@@ -59,7 +59,7 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
             using var sortedDoc = await session.PostInnerTubeAsync(
                 "browse",
                 writer => writer.WriteString("continuation", sortContinuationToken),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken: cancellationToken).ConfigureAwait(false);
             return ParseChannelVideosResponse(sortedDoc.RootElement, browseId, sort);
         }
     }
@@ -73,7 +73,7 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseChannelVideosResponse(doc.RootElement, continuation.Channel, continuation.Sort);
     }
@@ -90,7 +90,7 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
                 writer.WriteString("browseId", resolvedChannelId.Value);
                 writer.WriteString("params", "EglwbGF5bGlzdHPyBgQKAkIA");
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseChannelPlaylistsResponse(doc.RootElement, resolvedChannelId.Value);
     }
@@ -104,7 +104,7 @@ internal sealed class ChannelsHandler(InnerTubeSession session) : IYouTubeChanne
         using var doc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseChannelPlaylistsResponse(doc.RootElement, continuation.Channel);
     }

@@ -14,7 +14,7 @@ internal sealed class RatingsHandler(InnerTubeSession session) : IYouTubeRatings
         using var doc = await session.PostInnerTubeAsync(
             "next",
             writer => { writer.WriteString("videoId", videoId.Value); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseVideoRating(doc.RootElement);
     }
@@ -27,7 +27,7 @@ internal sealed class RatingsHandler(InnerTubeSession session) : IYouTubeRatings
         using var watchDoc = await session.PostInnerTubeAsync(
             "next",
             writer => { writer.WriteString("videoId", videoId.Value); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var actions = DiscoverRatingActions(watchDoc.RootElement, videoId);
 
@@ -49,7 +49,7 @@ internal sealed class RatingsHandler(InnerTubeSession session) : IYouTubeRatings
                 if (!string.IsNullOrEmpty(actionInfo.TrackingParams))
                     writer.WriteString("trackingParams", actionInfo.TrackingParams);
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         // 3. Require explicit commandProcessed / success acknowledgement
         ValidateRatingAcknowledgement(mutateDoc.RootElement, actionInfo.Endpoint, videoId);

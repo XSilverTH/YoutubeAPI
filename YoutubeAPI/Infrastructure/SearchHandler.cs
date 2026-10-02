@@ -36,7 +36,7 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
                 writer.WriteString("query", request.Query);
                 if (!string.IsNullOrEmpty(searchParams)) writer.WriteString("params", searchParams);
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseSearchResponse(doc.RootElement, request.Query, request.Kind);
     }
@@ -49,7 +49,7 @@ internal sealed class SearchHandler(InnerTubeSession session) : IYouTubeSearchHa
         using var doc = await session.PostInnerTubeAsync(
             "search",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseSearchResponse(doc.RootElement, continuation.Query, continuation.Kind);
     }

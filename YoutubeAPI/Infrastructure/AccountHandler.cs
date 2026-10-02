@@ -54,7 +54,7 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
         using var channelDoc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("browseId", channelId.Value); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var command = FindSubscriptionCommand(channelDoc.RootElement, true);
         if (command == null)
@@ -82,7 +82,7 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
                 writer.WriteString("clickTrackingParams", command.TrackingParams);
                 writer.WriteEndObject();
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         // 4. Require acknowledged action
         if (!HasAcknowledgedAction(doc.RootElement))
@@ -101,7 +101,7 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
         using var channelDoc = await session.PostInnerTubeAsync(
             "browse",
             writer => { writer.WriteString("browseId", channelId.Value); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var command = FindSubscriptionCommand(channelDoc.RootElement, false);
         if (command == null)
@@ -129,7 +129,7 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
                 writer.WriteString("clickTrackingParams", command.TrackingParams);
                 writer.WriteEndObject();
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         // 4. Require acknowledged action
         if (!HasAcknowledgedAction(doc.RootElement))
@@ -149,7 +149,7 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
                 writer.WriteStringValue(entryId.Value);
                 writer.WriteEndArray();
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var root = doc.RootElement;
         var processed = false;
@@ -196,7 +196,7 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
                         writer.WriteStringValue(token);
                     writer.WriteEndArray();
                 },
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             var root = doc.RootElement;
             if (!root.TryGetProperty("feedbackResponses", out var responses) ||
@@ -215,17 +215,19 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
 
     private async Task<Profile> LoadProfileAsync()
     {
+        string? requestDiagnostics = null;
         using var doc = await session.PostInnerTubeAsync(
             "account/account_menu",
             _ => { },
-            CancellationToken.None).ConfigureAwait(false);
+            diagnostics => requestDiagnostics = diagnostics,
+            cancellationToken: CancellationToken.None).ConfigureAwait(false);
 
         var profile = ParseAccountMenuProfile(doc.RootElement);
         if (profile is not null)
             return profile;
 
         throw new YouTubeProtocolException(
-            $"Failed to load user profile: unexpected account_menu response format ({DescribeResponseShape(doc.RootElement)}).");
+            $"Failed to load user profile: unexpected account_menu response format ({DescribeResponseShape(doc.RootElement)}; {requestDiagnostics ?? "requestDiagnostics=unavailable"}).");
     }
 
     private static SubscriptionCommand? FindSubscriptionCommand(JsonElement element, bool isSubscribe)
@@ -464,21 +466,141 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
         if (root.ValueKind != JsonValueKind.Object)
             return $"root={root.ValueKind}";
 
-        var topLevel = string.Join(",",
-            root.EnumerateObject().Select(property => property.Name).Take(12));
-        var actionShape = string.Empty;
-        if (root.TryGetProperty("actions", out var actions) && actions.ValueKind == JsonValueKind.Array &&
-            actions.GetArrayLength() > 0)
+        var actionShapes = new List<string>();
+        var actionCount = 0;
+        if (root.TryGetProperty("actions", out var actions) && actions.ValueKind == JsonValueKind.Array)
         {
-            var firstAction = actions[0];
-            if (firstAction.ValueKind == JsonValueKind.Object)
-                actionShape = string.Join(",",
-                    firstAction.EnumerateObject().Select(property => property.Name).Take(12));
+            actionCount = actions.GetArrayLength();
+            foreach (var action in actions.EnumerateArray().Take(256))
+                actionShapes.Add(action.ValueKind == JsonValueKind.Object
+                    ? $"[{DescribePropertyNames(action, 12)}]"
+                    : $"[{action.ValueKind}]");
         }
 
-        return string.IsNullOrEmpty(actionShape)
-            ? $"topLevel=[{topLevel}]"
-            : $"topLevel=[{topLevel}],firstAction=[{actionShape}]";
+        var structures = new List<string>();
+        var visited = 0;
+        var hasSignInEndpoint = false;
+        var traversalTruncated = false;
+        CollectDiagnosticStructure(root, "$", 0, ref visited, structures, ref hasSignInEndpoint,
+            ref traversalTruncated);
+        var loggedOutPath = "responseContext.loggedOut";
+        var loggedOut = "absent";
+        if (root.TryGetProperty("responseContext", out var context) && context.ValueKind == JsonValueKind.Object)
+        {
+            if (!TryGetBoolean(context, "loggedOut", out loggedOut))
+            {
+                loggedOutPath = "responseContext.mainAppWebResponseContext.loggedOut";
+                if (context.TryGetProperty("mainAppWebResponseContext", out var mainContext) &&
+                    mainContext.ValueKind == JsonValueKind.Object)
+                    _ = TryGetBoolean(mainContext, "loggedOut", out loggedOut);
+            }
+        }
+
+        var signInPresence = hasSignInEndpoint ? "true" : traversalTruncated ? "unknown" : "false";
+        var output = $"topLevel=[{DescribePropertyNames(root, 12)}],actions=[{string.Join(",", actionShapes)}]," +
+                     $"actionsTruncated={(actionCount > 256).ToString().ToLowerInvariant()}," +
+                     $"signInEndpointPresent={signInPresence},{loggedOutPath}={loggedOut}," +
+                     $"traversalTruncated={traversalTruncated.ToString().ToLowerInvariant()}";
+        if (structures.Count > 0)
+            output += $",structure=[{string.Join(",", structures)}]";
+        return output.Length <= 1800 ? output : output[..1800];
+    }
+
+    private static bool TryGetBoolean(JsonElement element, string propertyName, out string value)
+    {
+        if (element.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            value = property.GetBoolean().ToString().ToLowerInvariant();
+            return true;
+        }
+
+        value = "absent";
+        return false;
+    }
+
+    private static string DescribePropertyNames(JsonElement element, int limit)
+    {
+        var names = new List<string>();
+        foreach (var property in element.EnumerateObject().Take(limit))
+            names.Add(SafePropertyName(property.Name));
+        return string.Join(",", names);
+    }
+
+    private static void CollectDiagnosticStructure(
+        JsonElement element,
+        string path,
+        int depth,
+        ref int visited,
+        List<string> structures,
+        ref bool hasSignInEndpoint,
+        ref bool traversalTruncated)
+    {
+        if (element.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
+            return;
+        if (depth >= 20 || visited >= 512 || structures.Count >= 48)
+        {
+            traversalTruncated = true;
+            return;
+        }
+
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (++visited > 512)
+                {
+                    traversalTruncated = true;
+                    return;
+                }
+
+                var safeName = SafePropertyName(property.Name);
+                var childPath = $"{path}.{safeName}";
+                if (property.Name.Equals("signInEndpoint", StringComparison.Ordinal))
+                    hasSignInEndpoint = true;
+                var inRelevantBranch = path.Contains("popup", StringComparison.OrdinalIgnoreCase) ||
+                                       path.Contains("header", StringComparison.OrdinalIgnoreCase) ||
+                                       safeName.Contains("popup", StringComparison.OrdinalIgnoreCase) ||
+                                       safeName.Contains("header", StringComparison.OrdinalIgnoreCase);
+                if (inRelevantBranch && (safeName.EndsWith("Renderer", StringComparison.Ordinal) ||
+                                         safeName is "popup" or "header" or "signInEndpoint"))
+                    structures.Add(childPath);
+                CollectDiagnosticStructure(property.Value, childPath, depth + 1, ref visited, structures,
+                    ref hasSignInEndpoint, ref traversalTruncated);
+                if (visited >= 512 || structures.Count >= 48)
+                {
+                    traversalTruncated = true;
+                    return;
+                }
+            }
+        }
+        else
+        {
+            var index = 0;
+            var arrayLength = element.GetArrayLength();
+            foreach (var item in element.EnumerateArray().Take(32))
+            {
+                CollectDiagnosticStructure(item, $"{path}[{index++}]", depth + 1, ref visited, structures,
+                    ref hasSignInEndpoint, ref traversalTruncated);
+                if (visited >= 512 || structures.Count >= 48)
+                {
+                    traversalTruncated = true;
+                    return;
+                }
+            }
+            if (arrayLength > 32)
+                traversalTruncated = true;
+        }
+    }
+
+    private static string SafePropertyName(string name)
+    {
+        if (name.Length is 0 or > 64)
+            return "[unsafe]";
+        foreach (var character in name)
+            if (!(character is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '_' or '-'))
+                return "[unsafe]";
+        return name;
     }
 
     private sealed record SubscriptionCommand(

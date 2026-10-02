@@ -19,7 +19,7 @@ internal sealed class CommentsHandler(InnerTubeSession session) : IYouTubeCommen
         using var nextDoc = await session.PostInnerTubeAsync(
             "next",
             writer => { writer.WriteString("videoId", videoId.Value); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var nextRoot = nextDoc.RootElement;
         CheckIfCommentsDisabled(nextRoot);
@@ -32,7 +32,7 @@ internal sealed class CommentsHandler(InnerTubeSession session) : IYouTubeCommen
         using var commentsDoc = await session.PostInnerTubeAsync(
             "next",
             writer => { writer.WriteString("continuation", initialCommentsToken); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var commentsRoot = commentsDoc.RootElement;
 
@@ -46,7 +46,7 @@ internal sealed class CommentsHandler(InnerTubeSession session) : IYouTubeCommen
         using var newestDoc = await session.PostInnerTubeAsync(
             "next",
             writer => { writer.WriteString("continuation", newestToken); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseCommentThreadsResponse(newestDoc.RootElement, videoId.Value, sort);
         // }
@@ -61,7 +61,7 @@ internal sealed class CommentsHandler(InnerTubeSession session) : IYouTubeCommen
         using var doc = await session.PostInnerTubeAsync(
             "next",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseCommentThreadsResponse(doc.RootElement, continuation.VideoId, continuation.Sort);
     }
@@ -75,7 +75,7 @@ internal sealed class CommentsHandler(InnerTubeSession session) : IYouTubeCommen
         using var doc = await session.PostInnerTubeAsync(
             "next",
             writer => { writer.WriteString("continuation", continuation.Token); },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ParseCommentRepliesResponse(doc.RootElement, continuation.Target);
     }

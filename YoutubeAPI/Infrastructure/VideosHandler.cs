@@ -365,7 +365,7 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
             using var doc = await session.PostInnerTubeAsync(
                 "next",
                 writer => { writer.WriteString("videoId", videoId.Value); },
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             return ParseNextResponse(doc.RootElement);
         }
@@ -487,7 +487,7 @@ internal sealed class VideosHandler(InnerTubeSession session) : IYouTubeVideosHa
                     writer.WriteBoolean("contentCheckOk", true);
                     writer.WriteBoolean("racyCheckOk", true);
                 },
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
