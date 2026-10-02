@@ -245,6 +245,24 @@ internal sealed partial class InnerTubeSession : IDisposable
             }
         }
     }
+    internal static bool HasExplicitLoggedOut(JsonElement root)
+    {
+        if (!root.TryGetProperty("responseContext", out var responseContext) ||
+            responseContext.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (IsTrueBoolean(responseContext, "loggedOut"))
+            return true;
+
+        return responseContext.TryGetProperty("mainAppWebResponseContext", out var mainAppWebResponseContext) &&
+               mainAppWebResponseContext.ValueKind == JsonValueKind.Object &&
+               IsTrueBoolean(mainAppWebResponseContext, "loggedOut");
+    }
+
+    private static bool IsTrueBoolean(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.True;
+
 
     [SuppressMessage("Security", "CA5350:Do Not Use Weak Cryptographic Algorithms",
         Justification = "Required by YouTube SAPISIDHASH protocol")]

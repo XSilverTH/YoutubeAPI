@@ -222,6 +222,10 @@ internal sealed class AccountHandler(InnerTubeSession session) : IYouTubeAccount
             diagnostics => requestDiagnostics = diagnostics,
             cancellationToken: CancellationToken.None).ConfigureAwait(false);
 
+        if (InnerTubeSession.HasExplicitLoggedOut(doc.RootElement))
+            throw new AuthenticationExpiredException(
+                $"Failed to load user profile: YouTube explicitly reported the account as logged out ({DescribeResponseShape(doc.RootElement)}; {requestDiagnostics ?? "requestDiagnostics=unavailable"}).");
+
         var profile = ParseAccountMenuProfile(doc.RootElement);
         if (profile is not null)
             return profile;

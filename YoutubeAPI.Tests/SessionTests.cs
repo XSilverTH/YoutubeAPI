@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using YoutubeAPI.Models.Continuations;
 using Xunit;
 using YoutubeAPI.Exceptions;
 using YoutubeAPI.Infrastructure;
@@ -53,7 +54,7 @@ public class SessionTests
             new YouTubeClientOptions { Authentication = authentication, AuthUser = 2, PageId = "private-page" },
             httpClient);
 
-        var exception = await Assert.ThrowsAsync<YouTubeProtocolException>(() =>
+        var exception = await Assert.ThrowsAsync<AuthenticationExpiredException>(() =>
             new AccountHandler(session).GetProfileAsync(CancellationToken.None));
         var message = exception.Message;
 
@@ -143,6 +144,71 @@ public class SessionTests
                 Content = new StringContent(content, Encoding.UTF8, "application/json")
             });
         }
+    }
+
+    [Fact]
+    public async Task AccountProfileRejectsLoggedOutEvenWhenProfileDataIsPresent()
+    {
+        var authentication = YouTubeCookieAuthentication.FromNetscape(
+            ".youtube.com\tTRUE\t/\tTRUE\t2147483647\tSAPISID\ttest-sapisid\n");
+        using var httpClient = new HttpClient(new HomeResponseHandler(
+            """{"responseContext":{"loggedOut":true},"actions":[{"openPopupAction":{"popup":{"multiPageMenuRenderer":{"header":{"accountHeaderRenderer":{"accountName":{"simpleText":"Stale profile"}}}}}}}]}"""));
+        using var session = new InnerTubeSession(
+            new YouTubeClientOptions { Authentication = authentication }, httpClient);
+
+        await Assert.ThrowsAsync<AuthenticationExpiredException>(() =>
+            new AccountHandler(session).GetProfileAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AuthenticatedHomeRejectsExplicitLoggedOutOnInitialAndContinuationPages()
+    {
+        var authentication = YouTubeCookieAuthentication.FromNetscape(
+            ".youtube.com\tTRUE\t/\tTRUE\t2147483647\tSAPISID\ttest-sapisid\n");
+        using var initialClient = new HttpClient(new HomeResponseHandler(
+            """{"responseContext":{"loggedOut":true}}"""));
+        using var initialSession = new InnerTubeSession(
+            new YouTubeClientOptions { Authentication = authentication }, initialClient);
+        var initialFeeds = new FeedsHandler(initialSession);
+        await Assert.ThrowsAsync<AuthenticationExpiredException>(() =>
+            initialFeeds.GetHomePageAsync(CancellationToken.None));
+
+        using var continuationClient = new HttpClient(new HomeResponseHandler(
+            """{"responseContext":{"mainAppWebResponseContext":{"loggedOut":true}}}"""));
+        using var continuationSession = new InnerTubeSession(
+            new YouTubeClientOptions { Authentication = authentication }, continuationClient);
+        var continuationFeeds = new FeedsHandler(continuationSession);
+        await Assert.ThrowsAsync<AuthenticationExpiredException>(() =>
+            continuationFeeds.GetHomePageAsync(new HomeContinuation("home-token"), CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("""{"responseContext":{"loggedOut":false}}""")]
+    [InlineData("""{"responseContext":{"loggedOut":"true"}}""")]
+    [InlineData("{}")]
+    public async Task AuthenticatedHomeDoesNotTreatFalseOrUnknownLoggedOutAsExpired(string response)
+    {
+        var authentication = YouTubeCookieAuthentication.FromNetscape(
+            ".youtube.com\tTRUE\t/\tTRUE\t2147483647\tSAPISID\ttest-sapisid\n");
+        using var httpClient = new HttpClient(new HomeResponseHandler(response));
+        using var session = new InnerTubeSession(
+            new YouTubeClientOptions { Authentication = authentication }, httpClient);
+
+        var page = await new FeedsHandler(session).GetHomePageAsync(CancellationToken.None);
+
+        Assert.Empty(page.Items);
+    }
+
+    [Fact]
+    public async Task AnonymousHomeRemainsUsableWhenResponseReportsLoggedOut()
+    {
+        using var httpClient = new HttpClient(new HomeResponseHandler(
+            """{"responseContext":{"mainAppWebResponseContext":{"loggedOut":true}}}"""));
+        using var session = new InnerTubeSession(new YouTubeClientOptions(), httpClient);
+
+        var page = await new FeedsHandler(session).GetHomePageAsync(CancellationToken.None);
+
+        Assert.Empty(page.Items);
     }
 
     [Fact]
@@ -297,6 +363,22 @@ public class SessionTests
             });
         }
     }
+    private sealed class HomeResponseHandler(string content) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    request.Method == HttpMethod.Post ? content : "<html></html>",
+                    Encoding.UTF8,
+                    request.Method == HttpMethod.Post ? "application/json" : "text/html")
+            });
+        }
+    }
+
 
     private sealed class CapturingHandler : HttpMessageHandler
     {

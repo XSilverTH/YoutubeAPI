@@ -16,6 +16,7 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
             "browse",
             writer => { writer.WriteString("browseId", "FEwhat_to_watch"); },
             cancellationToken: cancellationToken).ConfigureAwait(false);
+        RejectExplicitlyLoggedOutHomeResponse(doc.RootElement);
 
         return ParseHomeFeedResponse(doc.RootElement);
     }
@@ -31,8 +32,17 @@ internal sealed class FeedsHandler(InnerTubeSession session) : IYouTubeFeedsHand
             writer => { writer.WriteString("continuation", continuation.Token); },
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
+        RejectExplicitlyLoggedOutHomeResponse(doc.RootElement);
         return ParseHomeFeedResponse(doc.RootElement);
     }
+
+    private void RejectExplicitlyLoggedOutHomeResponse(JsonElement root)
+    {
+        if (session.Options.Authentication is not null && InnerTubeSession.HasExplicitLoggedOut(root))
+            throw new AuthenticationExpiredException(
+                "YouTube explicitly reported the authenticated Home response as logged out.");
+    }
+
 
     public async Task<Page<FeedItem, SubscriptionsContinuation>> GetSubscriptionsPageAsync(
         CancellationToken cancellationToken)
