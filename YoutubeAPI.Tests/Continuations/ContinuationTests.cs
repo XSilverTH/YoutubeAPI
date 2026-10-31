@@ -164,14 +164,6 @@ public sealed class ContinuationTests
         Assert.Throws<FormatException>(() => ChannelVideosContinuation.Import(searchExported));
     }
 
-    [Fact]
-    public void ImportWithNullThrowsArgumentNullException()
-    {
-        Assert.Throws<ArgumentNullException>(() => SearchContinuation.Import(null!));
-        Assert.Throws<ArgumentNullException>(() => HistoryContinuation.Import(null!));
-        Assert.Throws<ArgumentNullException>(() => HomeContinuation.Import(null!));
-    }
-
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

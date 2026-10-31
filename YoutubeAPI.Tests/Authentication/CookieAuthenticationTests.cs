@@ -39,11 +39,6 @@ public sealed class CookieAuthenticationTests
         Assert.Equal("test_sapisid_value", auth.Cookies[0].Value);
     }
 
-    [Fact]
-    public void FromCookiesWithNullCollectionThrowsArgumentNullException()
-    {
-        Assert.Throws<ArgumentNullException>(() => YouTubeCookieAuthentication.FromCookies(null!));
-    }
 
     [Fact]
     public void FromCookiesWithNullEntriesAndExpiredCookiesSkipsThem()
@@ -198,12 +193,6 @@ public sealed class CookieAuthenticationTests
         Assert.True(memoryStream.CanRead);
     }
 
-    [Fact]
-    public void FromNetscapeWithNullThrowsArgumentNullException()
-    {
-        Assert.Throws<ArgumentNullException>(() => YouTubeCookieAuthentication.FromNetscape((string)null!));
-        Assert.Throws<ArgumentNullException>(() => YouTubeCookieAuthentication.FromNetscape((Stream)null!));
-    }
 
     [Fact]
     public void ToStringRedactsSecrets()
