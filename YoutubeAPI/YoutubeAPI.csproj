@@ -11,9 +11,6 @@
         <EnableAotAnalyzer>true</EnableAotAnalyzer>
     </PropertyGroup>
 
-    <ItemGroup>
-        <PackageReference Include="YoutubeExplode"/>
-    </ItemGroup>
 
     <ItemGroup>
         <InternalsVisibleTo Include="YoutubeAPI.Tests"/>
